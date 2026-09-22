@@ -22,6 +22,8 @@ senal cuando entrenamiento y prueba mezclan escalas de reactor, pero el modelo
 no transfiere a una escala que no vio. Esta documentado como hallazgo, no
 escondido.
 
+![Pipeline del proyecto](docs/pipeline.png)
+
 ---
 
 ## Instalacion
