@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+.venv/
+env/
+.vscode/
+.DS_Store
+
+# El dataset del caso de estudio esta bajo copyright de Elsevier y NO se
+# distribuye con este repositorio. Ver data/raw/README.md.
+data/raw/*.xlsx
+data/raw/*.xls
+
+# Resultados regenerables
+outputs/tablas/*
+outputs/figuras/*
+!outputs/**/.gitkeep
