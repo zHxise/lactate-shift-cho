@@ -57,18 +57,28 @@ class TestSinFuga:
                                   value_cols=["lactate", "glucose"], window=4)
         assert np.isnan(f.loc["A", "glucose_last"])
         assert f.loc["A", "glucose_n"] == 0
+        assert f.loc["A", "lactate_n"] == 4
 
 
 class TestVariables:
-    def test_cuenta_de_dias_medidos(self):
+    def test_cuenta_dias_medidos_no_dias_rellenados(self):
+        """La cuenta es de mediciones reales, no de celdas con valor.
+
+        Este test existe por un error encontrado en auditoria externa: la
+        cuenta se hacia despues del ffill, asi que los dias heredados se
+        contaban como medidos y la variable decia algo distinto de lo que
+        documentaba.
+        """
         df = pd.DataFrame({"culture": "A", "day": [1, 3], "lactate": [1.0, 3.0]})
         f = early_window_features(df, id_col="culture", day_col="day",
                                   value_cols=["lactate"], window=4)
-        assert f.loc["A", "lactate_n"] == 4  # tras ffill hay 4 valores
+        assert f.loc["A", "lactate_n"] == 2, "solo se midieron los dias 1 y 3"
+        assert np.isfinite(f.loc["A", "lactate_last"]), "pero el ffill si llena el dia 4"
+
         df2 = pd.DataFrame({"culture": "A", "day": [3, 4], "lactate": [1.0, 3.0]})
         f2 = early_window_features(df2, id_col="culture", day_col="day",
                                    value_cols=["lactate"], window=4)
-        assert f2.loc["A", "lactate_n"] == 2  # los dias 1 y 2 no tienen de donde heredar
+        assert f2.loc["A", "lactate_n"] == 2
 
     def test_cociente(self):
         df = pd.DataFrame({"culture": "A", "day": [1, 2, 3, 4],

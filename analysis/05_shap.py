@@ -49,11 +49,17 @@ SUFIJOS = ("_last", "_slope", "_mean", "_n")
 
 
 def variable_base(col: str) -> str:
-    """Agrupa las cuatro variantes de una misma medicion bajo su nombre."""
-    for s in SUFIJOS:
-        if col.endswith(s):
-            return col[: -len(s)]
-    return re.sub(r"_over_.*$", "_ratio", col)
+    """Agrupa las cuatro variantes de una misma medicion bajo su nombre.
+
+    Los cocientes se dejan intactos: colapsar ``lactate_over_glucose`` y
+    ``lactate_over_vcd`` en una sola categoria mezclaba dos senales distintas
+    y hacia ininterpretable su importancia agregada. Error encontrado en
+    auditoria externa.
+    """
+    for suf in SUFIJOS:
+        if col.endswith(suf):
+            return col[: -len(suf)]
+    return col
 
 
 def hacer_rf():

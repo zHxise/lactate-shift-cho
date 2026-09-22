@@ -96,10 +96,18 @@ def main() -> None:
     pd.DataFrame(filas).to_csv(TABLAS / "resultados_regresion.csv", index=False)
 
     # --- permutacion ------------------------------------------------------
+    # La primera version fijaba el alpha de Ridge una sola vez, con las
+    # etiquetas reales, y lo reutilizaba en todas las barajadas. Eso invalida
+    # el p-valor y ademas lo sesga a favor: con etiquetas barajadas, RidgeCV
+    # elegiria una regularizacion mucho mas fuerte y predeciria cerca de la
+    # media, dando un MAE nulo MENOR. Congelar un alpha pequeno obliga al
+    # modelo nulo a sobreajustar ruido y a errar mas de lo que erraria si se
+    # le dejara elegir. La prueba correcta repite el procedimiento COMPLETO,
+    # seleccion de hiperparametro incluida, dentro de cada permutacion.
+    # Error encontrado en auditoria externa.
     print("\n=== Prueba de permutacion (ridge, nucleo) ===")
     Xn = con_ev[nucleo]
-    alpha = float(pipe(RidgeCV(alphas=ALPHAS)).fit(Xn, y)["mod"].alpha_)
-    res = permutation_test(lambda yy: mae_cv(Ridge(alpha=alpha), Xn, yy, n_rep=2)[0],
+    res = permutation_test(lambda yy: mae_cv(RidgeCV(alphas=ALPHAS), Xn, yy, n_rep=2)[0],
                            y, n_permutations=200, seed=SEED, lower_is_better=True)
     print(f"MAE observado {res['observed']:.3f} | nulo {res['null_mean']:.3f} "
           f"+- {res['null_sd']:.3f} | p = {res['p_value']:.3f}")

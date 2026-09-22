@@ -37,17 +37,25 @@ def slope(days: Sequence[float], values: Sequence[float]) -> float:
     return float(np.polyfit(d[m], v[m], 1)[0])
 
 
-def _causal_window(g: pd.DataFrame, day_col: str, window: int, value_cols: list[str]) -> pd.DataFrame:
+def _causal_window(
+    g: pd.DataFrame, day_col: str, window: int, value_cols: list[str]
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Dias 1..window en rejilla completa, con relleno solo hacia atras.
 
     ``ffill`` hace que un hueco herede del dia anterior, nunca del posterior.
     Es la unica forma de relleno admisible dentro de la ventana: el dia 3 puede
     heredar del dia 2, jamas del dia 5.
+
+    Devuelve dos tablas: la rellenada y la mascara de lo que realmente se
+    midio ANTES de rellenar. La segunda hace falta porque contar mediciones
+    sobre la tabla rellenada cuenta valores heredados como si fueran
+    mediciones nuevas.
     """
     w = g[g[day_col] <= window].set_index(day_col)
     w = w.reindex(np.arange(1, window + 1))
+    medido = w[value_cols].notna()
     w[value_cols] = w[value_cols].ffill()
-    return w
+    return w, medido
 
 
 def early_window_features(
@@ -71,10 +79,12 @@ def early_window_features(
     ``<col>_mean``
         Promedio en la ventana.
     ``<col>_n``
-        Cuantos dias se midieron de verdad. Importa: una pendiente calculada
-        sobre dos puntos no merece la misma confianza que una sobre cuatro, y
-        dejar esa cuenta como variable permite que el modelo lo tenga en cuenta
-        y que tu lo audites despues.
+        Cuantos dias se midieron de verdad, contados ANTES del relleno hacia
+        atras. Importa: una pendiente calculada sobre dos puntos no merece la
+        misma confianza que una sobre cuatro, y dejar esa cuenta como variable
+        permite que el modelo lo tenga en cuenta y que tu lo audites despues.
+        Contarlo despues del relleno seria contar valores heredados como
+        mediciones, que es un error facil de cometer y dificil de notar.
 
     ``ratios`` acepta pares ``(numerador, denominador)`` y agrega el cociente
     al cierre de la ventana. Los cocientes suelen ser mas comparables entre
@@ -89,7 +99,7 @@ def early_window_features(
     filas = []
     for key, g in data.groupby(id_col, sort=True):
         g = g.sort_values(day_col)
-        w = _causal_window(g, day_col, window, value_cols)
+        w, medido = _causal_window(g, day_col, window, value_cols)
         days = w.index.to_numpy(dtype=float)
         f: dict[str, float] = {}
 
@@ -98,7 +108,7 @@ def early_window_features(
             f[f"{col}_last"] = x[-1]
             f[f"{col}_slope"] = slope(days, x)
             f[f"{col}_mean"] = np.nanmean(x) if np.any(np.isfinite(x)) else np.nan
-            f[f"{col}_n"] = int(np.isfinite(x).sum())
+            f[f"{col}_n"] = int(medido[col].sum())
 
         for num, den in ratios:
             a, b = w[num].to_numpy(dtype=float)[-1], w[den].to_numpy(dtype=float)[-1]
