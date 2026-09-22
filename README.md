@@ -116,46 +116,65 @@ normalizadas, del material suplementario de Gangadharan et al. (2021).
 por SHA-256.
 
 ```bash
-python analysis/00_verificar_datos.py     # comprueba el archivo
-python analysis/01_exploracion.py         # estructura, faltantes, cobertura
-python analysis/02_definicion_evento.py   # etiqueta + sensibilidad
-python analysis/02b_figura_evento.py      # verificacion visual
-python analysis/03_features.py            # variables de los dias 1-4
-python analysis/04_modelado.py            # regresion, Cox y controles
-python analysis/05_shap.py                # interpretacion y sus limites
+python analysis/00_verificar_datos.py        # comprueba el archivo
+python analysis/01_exploracion.py            # estructura, faltantes, cobertura
+python analysis/02_definicion_evento.py      # etiqueta + sensibilidad
+python analysis/02b_figura_evento.py         # verificacion visual
+python analysis/03_features.py               # variables de los dias 1-4
+python analysis/04_modelado.py               # regresion, Cox y controles
+python analysis/05_shap.py                   # interpretacion y sus limites
+python analysis/06_respuesta_auditoria.py    # experimentos de la auditoria externa
 ```
 
+### La pregunta que este trabajo responde, y la que no
+
+Con la definicion congelada, **101 de 106 cultivos hacen el shift**. Preguntar
+"lo hace o no" da 95 contra 5 y no tiene contenido: lo que varia es **cuando**,
+entre los dias 4 y 11. Por eso el problema se planteo como tiempo-a-evento.
+
+Ademas, 16 cultivos hacen el shift **dentro** de la ventana de observacion y se
+excluyen: no hay nada que anticipar cuando el desenlace ya esta en las propias
+variables. Eso deja **90 cultivos: 85 con evento y 5 censurados**.
+
+La consecuencia hay que decirla sin rodeos, porque cambia el alcance de todo lo
+demas: este trabajo **no** responde "se puede predecir el lactate shift en
+cultivos CHO". Responde una pregunta condicional:
+
+> Dado un cultivo que **todavia no ha hecho el shift** al cerrar el dia 4,
+> .que dia lo hara?
+
+Los 16 cultivos excluidos no se predicen, y el modelo tampoco resuelve la
+decision previa de "ya ocurrio / aun no". Es una limitacion de alcance, no un
+detalle de redaccion.
+
+Dia del evento: mediana 6 (rango 5-11). La anticipacion efectiva sobre la
+ventana es de **2 dias en mediana**, y 20 de 85 eventos ocurren a un solo dia
+del cierre. Es poco, y decirlo cambia como se lee lo que sigue.
+
 ### Que salio
-
-Con la definicion congelada (suavizado 3 dias, 2 dias consecutivos de
-descenso, caida ≥30%), de 106 cultivos:
-
-- **101 hacen el shift.** La pregunta "lo hace o no" queda 95/5 y no tiene
-  contenido. Lo que varia es **cuando**, entre los dias 4 y 11. Por eso el
-  problema se planteo como tiempo-a-evento y no como clasificacion binaria.
-- 16 cultivos hacen el shift dentro de la ventana de observacion y se excluyen:
-  no hay nada que anticipar cuando el desenlace ya esta en las propias
-  variables.
-- Conjunto de modelado: **90 cultivos, 85 con evento, 5 censurados.**
-- Dia del evento: mediana 6 (rango 5-11). La anticipacion efectiva sobre la
-  ventana es de **2 dias en mediana**, y 20 de 85 eventos ocurren a un solo dia
-  del cierre. Es poco, y decirlo cambia como se lee todo lo demas.
 
 Prediccion del dia del evento, error absoluto medio en dias
 (validacion cruzada repetida 5×5):
 
 | Variables | Baseline (mediana) | Ridge | Random Forest |
 |---|---|---|---|
-| Nucleo (28) | 0.835 | 0.649 | **0.575** |
-| + glutamina y osmolalidad (36) | 0.835 | 0.690 | 0.582 |
+| Nucleo (28) | 0.835 | 0.632 | **0.575** |
+| + glutamina y osmolalidad (36) | 0.835 | 0.667 | 0.581 |
 | Solo la escala del reactor (control) | 0.835 | 0.928 | 0.795 |
 
-Prueba de permutacion (200 barajadas): MAE observado 0.645 contra un nulo de
-0.947 ± 0.035, p < 0.005. La senal existe.
+Prueba de permutacion (200 barajadas, seleccion de hiperparametro incluida
+dentro de cada barajada): MAE observado 0.643 contra un nulo de 0.935 ± 0.023,
+p < 0.005. La senal existe.
 
 Modelo de Cox sobre los 90 cultivos, aprovechando los censurados:
-**c-index 0.795**, contra un nulo permutado de 0.489 ± 0.057 y un control de
+**c-index 0.825**, contra un nulo permutado de 0.485 ± 0.051 y un control de
 solo-escala de 0.542.
+
+> **Sobre el 0.575.** Es la mejor de nueve combinaciones de modelo y conjunto
+> de variables, elegida despues de verlas todas. Sin una validacion cruzada
+> anidada, esa cifra es **exploratoria**, no una estimacion confirmatoria de
+> desempeno futuro. El contraste que si aguanta es el orden: los tres modelos
+> le ganan al baseline y el control de solo-escala no.
 
 ### El resultado negativo
 
@@ -163,16 +182,21 @@ Dejando fuera una escala de reactor completa y prediciendo sobre ella:
 
 | Escala excluida | n | Baseline | Ridge | Random Forest |
 |---|---|---|---|---|
-| 0.00202 | 43 | 1.023 | 0.950 | 1.079 |
-| 0.00181 | 18 | 0.778 | 1.391 | 1.635 |
-| 0.00000 | 16 | 0.438 | 0.498 | 0.464 |
-| **Ponderado** | | **0.844** | 0.959 | 1.081 |
+| 0.00202 | 43 | 1.023 | 0.967 | 1.075 |
+| 0.00181 | 18 | 0.778 | 1.344 | 1.609 |
+| 0.00000 | 16 | 0.438 | 0.526 | 0.466 |
+| **Ponderado** | | **0.844** | 0.964 | 1.073 |
 
 **Ningun modelo le gana al baseline cuando la escala es nueva.** La senal que
-se ve con validacion cruzada aleatoria es especifica del contexto de proceso
-y no transfiere. Para alguien que quisiera llevar esto a planta, esa es la
-conclusion operativa: un modelo asi habria que reentrenarlo por escala, no
-trasladarlo.
+se ve con validacion cruzada aleatoria es especifica del contexto de proceso.
+Para alguien que quisiera llevar esto a planta, esa es la conclusion
+operativa: un modelo asi habria que reentrenarlo por escala, no trasladarlo.
+
+Con la precision que corresponde: son **tres** escalas (43, 18 y 16 cultivos).
+Lo que los numeros permiten afirmar es que no transfiere entre estas tres, no
+que no transfiera en general. Quitar `escala` de las variables no cambia el
+resultado (Random Forest 1.073 frente a 1.080), asi que la degradacion no
+viene de que el modelo conociera el volumen de la escala nueva.
 
 ### Que dice la interpretacion, y que no
 
@@ -184,8 +208,8 @@ La direccion de los efectos es coherente con lo que se esperaria: mas biomasa
 y crecimiento mas rapido en los dias 1-4 adelantan el shift; un cociente
 lactato/glucosa alto tambien. Mas glutamato, amonio o pH lo retrasan.
 
-Pero la magnitud engana, y el repositorio incluye las dos comprobaciones que
-lo demuestran.
+Pero la magnitud engana, y el repositorio incluye las comprobaciones que lo
+demuestran.
 
 **Importancia no es necesidad.** El glutamato domina el ranking de SHAP
 (0.53 de |SHAP| sumado, contra 0.17 de la siguiente) y tambien encabeza la
@@ -195,12 +219,16 @@ importancia por permutacion. Aun asi:
 |---|---|
 | Baseline (mediana) | 0.835 |
 | Todas las variables | 0.575 |
-| Solo glutamato | 0.683 |
-| Todas **sin** glutamato | 0.593 |
+| Solo glutamato | 0.676 |
+| Todas **sin** glutamato | 0.592 |
 
 Quitarlo casi no empeora nada. SHAP y la permutacion miden cuanto **usa** el
 modelo una variable, no cuanta informacion **unica** aporta: la del glutamato
 tambien esta en las demas, y el modelo la recupera de ahi.
+
+(La variable a ablacionar se eligio despues de ver los resultados de SHAP, lo
+cual sesga el experimento. Conviene notar hacia donde: ese sesgo favorece que
+quitarla empeore el modelo, y no empeora. La lectura es conservadora.)
 
 **Parte de la senal es la identidad del proceso, no fisiologia.** El grafico
 de dependencia del glutamato no muestra una relacion continua sino dos nubes
@@ -216,8 +244,60 @@ lectura honesta no es "el glutamato temprano controla el shift", sino "el
 glutamato temprano ayuda a identificar de que proceso viene el lote, y cada
 proceso tiene su momento tipico de shift".
 
+### Auditoria externa
+
+El codigo y el analisis se revisaron buscando errores.
+
+Encontraron **tres errores reales**, todos corregidos:
+
+1. `<col>_n` contaba como medidos los dias rellenados hacia atras. Habia
+   incluso un test que afirmaba ese comportamiento, lo que lo volvia
+   permanente. La cuenta se hace ahora sobre la mascara previa al relleno.
+2. La prueba de permutacion congelaba un `alpha` de Ridge elegido con las
+   etiquetas reales. El sesgo iba a favor del resultado: con etiquetas
+   barajadas, `RidgeCV` elegiria mucha mas regularizacion y erraria menos, asi
+   que fijar un alpha pequeno inflaba el error nulo. Ahora el hiperparametro se
+   reajusta dentro de cada barajada.
+3. La agrupacion de variables para SHAP colapsaba lactato/glucosa y
+   lactato/VCD en una sola categoria, mezclando dos senales distintas.
+
+Una objecion resulto incorrecta al verificarla: la permutacion del modelo de
+Cox si mantiene unido el par (tiempo, evento), porque el mismo indice se aplica
+a las dos series.
+
+Tres objeciones no tenian respuesta con el analisis existente y se convirtieron
+en los experimentos de `analysis/06_respuesta_auditoria.py`:
+
+**.El modelo solo extrapola la curva de lactato que ya empezo?** Era la
+objecion mas fuerte: la etiqueta se construye de la trayectoria futura del
+lactato, y el lactato temprano esta entre las variables.
+
+| Conjunto | MAE (dias) |
+|---|---|
+| Baseline | 0.835 |
+| Todas (28 variables) | 0.575 |
+| Solo variables de lactato (6) | 0.692 |
+| **Sin ninguna variable de lactato (22)** | **0.594** |
+
+Quitar todo el lactato deja el desempeno casi igual. El modelo no esta
+continuando una curva.
+
+**.Las conclusiones dependen de la definicion del evento, que se ajusto
+mirando los datos?** Se rehizo el modelo completo con ocho definiciones
+alternativas, cada una comparada contra su propio baseline. La mejora sobre el
+baseline es positiva en las ocho, entre 0.176 y 0.264 dias (mediana 0.249),
+incluida la variante sin la correccion del pico, que cambia el numero de
+cultivos excluidos de 16 a 6.
+
+**.El leave-one-scale-out mide transferencia real?** Repetido sin la variable
+`escala`: sin cambios relevantes (ver arriba).
+
 ## Limitaciones
 
+- **El alcance es condicional**: cultivos que no han hecho el shift al cerrar
+  el dia 4. Los 16 excluidos no se predicen.
+- **El 0.575 es una cifra seleccionada** entre nueve combinaciones, sin
+  validacion cruzada anidada. Exploratoria, no confirmatoria.
 - **La imputacion del dataset de origen no es causal.** Los autores rellenaron
   huecos con interpolacion de Stineman mas SVR sobre series completas;
   Stineman usa el punto anterior y el posterior. Un valor "del dia 3" puede
@@ -231,6 +311,9 @@ proceso tiene su momento tipico de shift".
 - **Los datos vienen normalizados 0-1 por columna sobre todo el conjunto.** Esa
   normalizacion ya uso todos los cultivos: hay una fuga leve e inevitable en el
   dato de origen, que no se puede deshacer porque no hay unidades.
+- **El c-index de 0.825 convive con empates masivos** (32 eventos en el dia 6,
+  22 en el 7, 20 en el 5) y solo 5 censurados. Es calculable e informativo,
+  pero no soporta una interpretacion fuerte.
 - **Sin marcadores redox** (NAD+, piruvato) en el dataset, esto describe
   senales de proceso, no mecanismo. Asociacion, no causalidad.
 - **El muestreo esparso degrada la precision del dia.** Con 30% de dias
@@ -250,8 +333,9 @@ pytest
 34 tests, ninguno depende del dataset con copyright: todo lo que verifican se
 construye en el momento. Cubren el caso del rebote tardio, dias faltantes,
 NaN internos, series demasiado cortas, parametros invalidos, el sesgo del
-suavizado y su correccion, y que las variables de la ventana temprana no
-cambien cuando se agregan dias posteriores.
+suavizado y su correccion, que la cuenta de dias medidos no incluya los dias
+rellenados, y que las variables de la ventana temprana no cambien cuando se
+agregan dias posteriores.
 
 ## Cita del dataset
 
