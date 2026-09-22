@@ -126,9 +126,14 @@ def main() -> None:
     print("\n=== Direccion del efecto (top 8 individuales) ===")
     print("correlacion entre el valor de la variable y su propio SHAP;")
     print("SHAP positivo = empuja el dia del evento hacia MAS TARDE\n")
+    # La correlacion se calcula sobre los valores imputados, que son los que
+    # el modelo vio al generar esos SHAP. Usar X sin imputar puede invertir el
+    # signo aparente si los faltantes no son aleatorios. Error de auditoria.
+    X_imp = pd.DataFrame(SimpleImputer(strategy="median").fit_transform(X),
+                         columns=X.columns, index=X.index)
     filas = []
     for c in imp.head(8).index:
-        r = X[c].corr(shap_df[c], method="spearman")
+        r = X_imp[c].corr(shap_df[c], method="spearman")
         signo = "mas alto -> shift MAS TARDE" if r > 0 else "mas alto -> shift MAS TEMPRANO"
         filas.append({"variable": c, "rho(valor, shap)": round(r, 3), "lectura": signo})
     print(pd.DataFrame(filas).to_string(index=False))
@@ -178,7 +183,7 @@ def main() -> None:
     # completo lo que se puede afirmar.
     var_ppal = imp.index[0]   # la variable individual mas importante
     print(f"\n=== .{var_ppal} es senal fisiologica o etiqueta del proceso? ===")
-    v = X[var_ppal]
+    v = X_imp[var_ppal]
     corte = float(v.median())
     grupo = v > corte
     print(f"partiendo en la mediana ({corte:.4f}): "
@@ -207,12 +212,12 @@ def main() -> None:
     axes[0].set_xlabel("|SHAP| sumado (dias)")
     axes[0].set_title("Importancia por variable de origen", fontsize=10)
     for ax, c in zip(axes[1:], top3):
-        ax.scatter(X[c], shap_df[c], s=20, alpha=0.75, color="tab:blue",
+        ax.scatter(X_imp[c], shap_df[c], s=20, alpha=0.75, color="tab:blue",
                    edgecolor="none")
         ax.axhline(0, color="0.5", lw=0.8)
         ax.set_xlabel(c)
         ax.set_ylabel("SHAP (dias)")
-        rho_c = X[c].corr(shap_df[c], method="spearman")
+        rho_c = X_imp[c].corr(shap_df[c], method="spearman")
         flecha = "mas alto -> mas tarde" if rho_c > 0 else "mas alto -> mas temprano"
         ax.set_title(flecha, fontsize=9)
         ax.tick_params(labelsize=8)

@@ -141,6 +141,12 @@ def reconstruir(raw, **kw) -> tuple[pd.DataFrame, list[str], int]:
     X.columns = [c.replace("[", "").replace("]", "").replace("+", "")
                   .replace("-", "").replace(" ", "_").lower() for c in X.columns]
     X = X.rename(columns={"culture_volume": "escala"})
+    # vcd_crec_rel se construye a mano en 03_features.py y no sale de
+    # early_window_features. Omitirla aqui hacia que estos experimentos
+    # corrieran con 27 variables en vez de 28, y sus cifras no fueran
+    # comparables con el pipeline principal. Error de auditoria externa.
+    v = raw[raw["day"] <= VENTANA].sort_values("day").groupby("cult")["VCD"]
+    X["vcd_crec_rel"] = v.last() / v.first().replace(0, np.nan)
     tabla = X.join(et[["occurred", "day"]].rename(
         columns={"occurred": "evento", "day": "dia_evento"})).join(et[["excluir"]])
     n_excluidos = int(tabla["excluir"].sum())
@@ -153,7 +159,9 @@ def experimento_cd(raw):
     print("=" * 72)
     print("La sensibilidad original solo contaba eventos. Aqui se rehace el")
     print("modelo completo con cada definicion y se compara contra su propio")
-    print("baseline, que cambia cuando cambia el conjunto.\n")
+    print("baseline, que cambia cuando cambia el conjunto.")
+    print("Las cifras se comparan ENTRE FILAS, no contra el 0.575 del pipeline")
+    print("principal: aqui la validacion usa menos repeticiones por costo.\n")
 
     filas = []
     configs = [(3, 2, 0.30, True), (3, 2, 0.30, False), (1, 2, 0.30, True),
@@ -166,8 +174,8 @@ def experimento_cd(raw):
         if len(con_ev) < 30:
             continue
         y = con_ev["dia_evento"]
-        base, _ = mae_cv(DummyRegressor(strategy="median"), con_ev[cols], y, n_rep=3)
-        modelo, _ = mae_cv(rf(), con_ev[cols], y, n_rep=3)
+        base, _ = mae_cv(DummyRegressor(strategy="median"), con_ev[cols], y, n_rep=2)
+        modelo, _ = mae_cv(rf(), con_ev[cols], y, n_rep=2)
         filas.append({"suav": suav, "consec": consec, "umbral": umbral,
                       "refine": refinar, "n": len(con_ev),
                       "excluidos": n_exc,

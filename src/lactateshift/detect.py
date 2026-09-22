@@ -18,18 +18,36 @@ Hay shift en el primer dia ``t`` tal que:
 
 1. la derivada de la serie suavizada es negativa durante ``n_consecutive``
    dias a partir de ``t``, y
-2. el valor cae desde el maximo local en ``t`` al menos ``drop_threshold``
-   veces ese maximo, medido **antes** de que la serie vuelva a superarlo.
+2. el valor cae desde ``t`` al menos ``drop_threshold`` veces el valor en
+   ``t``, medido **antes** de que la serie vuelva a superarlo.
 
-La condicion 2, con esa restriccion, es lo que separa un cambio de regimen de
-un bache transitorio: si la serie se recupera enseguida, la caida nunca
-alcanza el umbral.
+Que detecta y que no
+--------------------
+La regla detecta **el inicio de un descenso sostenido y profundo**. Eso no es
+exactamente lo mismo que "el primer maximo local", aunque en la mayoria de las
+series coinciden: ``t`` es el primer punto desde el que baja, y el codigo no
+exige que el punto anterior sea menor. En series con meseta en el maximo, ``t``
+cae al final de la meseta y no en su primer punto. ``require_local_max=True``
+impone la condicion estricta; por omision esta desactivada porque en una
+meseta ruidosa la condicion estricta desplaza el evento de forma arbitraria.
 
-Por que el *primer* maximo local y no el maximo global: una parte de los
+Una caida profunda seguida de recuperacion **si** cuenta como shift. Es
+deliberado: en cultivos reales el cambio a consumo de lactato es a menudo
+reversible, y el lactato vuelve a subir en fase tardia. Lo que la regla
+excluye son las caidas que no alcanzan ``drop_threshold`` antes de recuperar
+el nivel previo, no las que se revierten mas tarde.
+
+Por eso ``min_peak`` existe: sin un umbral de amplitud absoluta, una serie que
+oscile cerca de cero puede producir una caida relativa del 30% que es solo
+ruido analitico. Por omision no se aplica, porque el valor depende de las
+unidades de cada dataset.
+
+Por que el *primer* punto que cumple y no el maximo global: una parte de los
 cultivos hace el shift, consume lactato varios dias y despues vuelve a
 producirlo al final, superando el maximo inicial. Anclar en el maximo global
 marca esos cultivos como "sin shift", lo cual es falso: el shift ocurrio, solo
 fue reversible.
+
 """
 
 from __future__ import annotations
@@ -139,6 +157,8 @@ def detect_shift(
     min_day: float | None = None,
     regularize_grid: bool = True,
     refine_peak: bool = True,
+    require_local_max: bool = False,
+    min_peak: float | None = None,
 ) -> ShiftResult:
     """Detecta el lactate shift en una serie.
 
@@ -170,6 +190,16 @@ def detect_shift(
         se reajusta al maximo de la serie sin suavizar dentro de
         ``+-(smooth_window // 2)`` dias. Detectado con los cultivos sinteticos
         de :mod:`lactateshift.datasets`, donde el dia real se conoce.
+    require_local_max:
+        Exige ademas que el punto sea un maximo local estricto de la serie
+        suavizada (que el valor anterior sea menor). Por omision False: en una
+        meseta ruidosa la condicion estricta desplaza el evento de forma
+        arbitraria. Activarlo es la lectura literal de "primer maximo local".
+    min_peak:
+        Amplitud minima del maximo, en las unidades de la serie. Sin este
+        filtro, una serie que oscile cerca de cero puede dar una caida
+        relativa del 30% que es solo ruido analitico. Por omision None,
+        porque el valor apropiado depende de las unidades de cada dataset.
 
     Returns
     -------
@@ -197,6 +227,10 @@ def detect_shift(
     deriv = np.diff(s)
     for i in range(len(s) - n_consecutive):
         if not np.isfinite(s[i]) or s[i] <= 0:
+            continue
+        if min_peak is not None and s[i] < min_peak:
+            continue
+        if require_local_max and i > 0 and not (s[i] > s[i - 1]):
             continue
         if not np.all(deriv[i : i + n_consecutive] < 0):
             continue

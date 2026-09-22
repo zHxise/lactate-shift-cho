@@ -86,8 +86,18 @@ Hay shift en el primer dia `t` tal que:
 2. el valor cae desde el maximo local en `t` al menos `drop_threshold` veces
    ese maximo, **antes** de que la serie vuelva a superarlo.
 
-La condicion 2, con esa restriccion, separa un cambio de regimen de un bache:
-si la serie se recupera enseguida, la caida nunca alcanza el umbral.
+La condicion 2, con esa restriccion, descarta las caidas que se recuperan
+antes de alcanzar el umbral.
+
+**Lo que la regla no hace**, y conviene decirlo porque es facil suponer lo
+contrario: una caida profunda que despues se revierte **si** cuenta como
+shift. Es deliberado — en cultivos reales el cambio a consumo suele ser
+reversible y el lactato vuelve a subir en fase tardia — pero significa que la
+regla detecta *el inicio de un descenso sostenido y profundo*, no *un cambio
+de regimen permanente*. Hay un test que documenta ese limite. Tampoco filtra
+por amplitud absoluta salvo que se le pase `min_peak`: sin ese parametro, una
+serie que oscile cerca de cero puede producir una caida relativa del 30% que
+es solo ruido analitico.
 
 **Por que el primer maximo local y no el maximo global.** Una parte de los
 cultivos hace el shift, consume lactato varios dias y despues vuelve a
@@ -147,6 +157,14 @@ Los 16 cultivos excluidos no se predicen, y el modelo tampoco resuelve la
 decision previa de "ya ocurrio / aun no". Es una limitacion de alcance, no un
 detalle de redaccion.
 
+Y hay una consecuencia operativa mas incomoda, senalada en auditoria externa:
+**saber que un cultivo pertenece a esa poblacion requiere informacion
+posterior al dia 4.** La propia regla necesita dias siguientes para confirmar
+que un descenso es sostenido, asi que al cerrar el dia 4 no se puede
+determinar con certeza si el shift ya ocurrio. En una planta, aplicar este
+modelo exigiria primero un clasificador para esa decision, con sus propios
+errores. Tal como esta, la condicion de entrada es un oraculo retrospectivo.
+
 Dia del evento: mediana 6 (rango 5-11). La anticipacion efectiva sobre la
 ventana es de **2 dias en mediana**, y 20 de 85 eventos ocurren a un solo dia
 del cierre. Es poco, y decirlo cambia como se lee lo que sigue.
@@ -166,9 +184,12 @@ Prueba de permutacion (200 barajadas, seleccion de hiperparametro incluida
 dentro de cada barajada): MAE observado 0.643 contra un nulo de 0.935 ± 0.023,
 p < 0.005. La senal existe.
 
-Modelo de Cox sobre los 90 cultivos, aprovechando los censurados:
-**c-index 0.825**, contra un nulo permutado de 0.485 ± 0.051 y un control de
-solo-escala de 0.542.
+Modelo de Cox sobre los 90 cultivos, aprovechando los censurados: c-index
+0.825, contra un nulo permutado de 0.485 ± 0.051 y un control de solo-escala
+de 0.542. **Es evidencia secundaria y debil**: 74 de los 85 eventos caen en
+tres dias (20 en el 5, 32 en el 6, 22 en el 7) y solo hay 5 censurados, asi
+que el c-index mide sobre todo la resolucion arbitraria de empates. No lo
+trates como confirmacion independiente del resultado de regresion.
 
 > **Sobre el 0.575.** Es la mejor de nueve combinaciones de modelo y conjunto
 > de variables, elegida despues de verlas todas. Sin una validacion cruzada
@@ -187,16 +208,19 @@ Dejando fuera una escala de reactor completa y prediciendo sobre ella:
 | 0.00000 | 16 | 0.438 | 0.526 | 0.466 |
 | **Ponderado** | | **0.844** | 0.964 | 1.073 |
 
-**Ningun modelo le gana al baseline cuando la escala es nueva.** La senal que
-se ve con validacion cruzada aleatoria es especifica del contexto de proceso.
-Para alguien que quisiera llevar esto a planta, esa es la conclusion
-operativa: un modelo asi habria que reentrenarlo por escala, no trasladarlo.
+**Ningun modelo le gana al baseline en promedio ponderado**, y el Random
+Forest lo empeora en dos de las tres escalas. Ridge si le gana en una: en la
+escala de 43 cultivos obtiene 0.967 frente a 1.023 del baseline. Una version
+anterior de este README afirmaba que ningun modelo ganaba en ningun caso; era
+falso y lo corrigio una auditoria externa.
 
-Con la precision que corresponde: son **tres** escalas (43, 18 y 16 cultivos).
-Lo que los numeros permiten afirmar es que no transfiere entre estas tres, no
-que no transfiera en general. Quitar `escala` de las variables no cambia el
-resultado (Random Forest 1.073 frente a 1.080), asi que la degradacion no
-viene de que el modelo conociera el volumen de la escala nueva.
+Con la precision que corresponde: son **tres** escalas (43, 18 y 16 cultivos),
+sin intervalos ni repeticion que midan la variabilidad de excluir una. Lo que
+los numeros permiten afirmar es que **en estas tres particiones el modelo no
+mostro transferencia**, no que no transfiera en general. Quitar `escala` de las
+variables no cambia el resultado (Random Forest 1.073 frente a 1.080), asi que
+la degradacion no viene de que el modelo conociera el volumen de la escala
+nueva.
 
 ### Que dice la interpretacion, y que no
 
@@ -279,15 +303,29 @@ lactato, y el lactato temprano esta entre las variables.
 | Solo variables de lactato (6) | 0.692 |
 | **Sin ninguna variable de lactato (22)** | **0.594** |
 
-Quitar todo el lactato deja el desempeno casi igual. El modelo no esta
-continuando una curva.
+Quitar todo el lactato deja el desempeno casi igual.
+
+La lectura precisa es estrecha: **el desempeno no depende de las variables
+explicitas de lactato**. No demuestra que el modelo ignore la trayectoria del
+lactato, porque glucosa, VCD y amonio son proxies mecanicos de ella — la
+glucosa es el sustrato, el VCD la biomasa que lo produce, el amonio se genera
+en el metabolismo que lo acompana. Refutar la objecion por completo exigiria
+un conjunto de variables independiente del estado glucolitico, que este
+dataset no permite construir.
 
 **.Las conclusiones dependen de la definicion del evento, que se ajusto
 mirando los datos?** Se rehizo el modelo completo con ocho definiciones
-alternativas, cada una comparada contra su propio baseline. La mejora sobre el
-baseline es positiva en las ocho, entre 0.176 y 0.264 dias (mediana 0.249),
-incluida la variante sin la correccion del pico, que cambia el numero de
-cultivos excluidos de 16 a 6.
+alternativas, cada una comparada contra su propio baseline. La mejora es
+positiva en las ocho, entre 0.174 y 0.246 dias (mediana 0.236), incluida la
+variante sin la correccion del pico, que cambia el numero de cultivos
+excluidos de 16 a 6.
+
+Con la salvedad que corresponde: las ocho son variaciones de parametros de la
+**misma familia de regla** (suavizado, derivada, umbral relativo). Eso
+respalda decir que el resultado es estable ante esos parametros, no que sea
+robusto a una definicion estructuralmente distinta del evento — un metodo de
+punto de ruptura, o un umbral sobre la tasa de consumo, podrian dar otra cosa.
+Queda pendiente.
 
 **.El leave-one-scale-out mide transferencia real?** Repetido sin la variable
 `escala`: sin cambios relevantes (ver arriba).
@@ -295,7 +333,15 @@ cultivos excluidos de 16 a 6.
 ## Limitaciones
 
 - **El alcance es condicional**: cultivos que no han hecho el shift al cerrar
-  el dia 4. Los 16 excluidos no se predicen.
+  el dia 4. Los 16 excluidos no se predicen, y determinar si un cultivo
+  pertenece a esa poblacion requiere informacion posterior al dia 4, asi que
+  la condicion de entrada es hoy un oraculo retrospectivo.
+- **La regla no distingue un cambio de regimen permanente de una caida
+  profunda reversible**, y sin `min_peak` no filtra por amplitud absoluta.
+- **El experimento "sin lactato" no descarta los proxies** (glucosa, VCD,
+  amonio) del mismo estado glucolitico.
+- **Las ocho definiciones alternativas pertenecen a la misma familia de
+  regla**: son sensibilidad de parametros, no robustez estructural.
 - **El 0.575 es una cifra seleccionada** entre nueve combinaciones, sin
   validacion cruzada anidada. Exploratoria, no confirmatoria.
 - **La imputacion del dataset de origen no es causal.** Los autores rellenaron

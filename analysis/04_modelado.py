@@ -105,12 +105,24 @@ def main() -> None:
     # le dejara elegir. La prueba correcta repite el procedimiento COMPLETO,
     # seleccion de hiperparametro incluida, dentro de cada permutacion.
     # Error encontrado en auditoria externa.
-    print("\n=== Prueba de permutacion (ridge, nucleo) ===")
+    # Se corre para los dos modelos. La primera version solo permutaba Ridge,
+    # mientras que la cifra destacada en el README era la del Random Forest:
+    # el p-valor no respaldaba el numero que se estaba presentando. Error
+    # encontrado en auditoria externa.
+    print("\n=== Prueba de permutacion (nucleo) ===")
     Xn = con_ev[nucleo]
-    res = permutation_test(lambda yy: mae_cv(RidgeCV(alphas=ALPHAS), Xn, yy, n_rep=2)[0],
-                           y, n_permutations=200, seed=SEED, lower_is_better=True)
-    print(f"MAE observado {res['observed']:.3f} | nulo {res['null_mean']:.3f} "
-          f"+- {res['null_sd']:.3f} | p = {res['p_value']:.3f}")
+    for nombre, hacer in [("ridge", lambda: RidgeCV(alphas=ALPHAS)),
+                          ("random forest", lambda: RandomForestRegressor(
+                              n_estimators=150, min_samples_leaf=3,
+                              random_state=SEED, n_jobs=-1))]:
+        # El bosque es mucho mas caro, asi que lleva menos barajadas. Eso
+        # limita la resolucion del p-valor (minimo 1/n_perm), no su validez.
+        n_perm, n_rep = (200, 2) if nombre == "ridge" else (40, 1)
+        res = permutation_test(lambda yy: mae_cv(hacer(), Xn, yy, n_rep=n_rep)[0],
+                               y, n_permutations=n_perm, seed=SEED, lower_is_better=True)
+        print(f"  {nombre:14s} MAE observado {res['observed']:.3f} | "
+              f"nulo {res['null_mean']:.3f} +- {res['null_sd']:.3f} | "
+              f"p = {res['p_value']:.3f}  ({n_perm} barajadas)")
 
     # --- leave-one-scale-out ---------------------------------------------
     print("\n=== Leave-one-scale-out (escalas con >=15 cultivos) ===")

@@ -30,11 +30,24 @@ class TestCasosBasicos:
         r = detect_shift(range(1, 11), [0.5] * 10)
         assert not r.occurred
 
-    def test_bache_transitorio_no_cuenta(self):
-        # baja dos dias y se recupera de inmediato: no es cambio de regimen
+    def test_bache_superficial_no_cuenta(self):
+        # baja dos dias sin llegar al umbral y se recupera: no es shift
         v = [1, 2, 3, 4, 3.8, 3.6, 5, 6, 7, 8]
         r = detect_shift(range(1, 11), v, drop_threshold=0.30)
         assert not r.occurred
+
+    def test_caida_profunda_con_rebote_SI_cuenta(self):
+        """Documenta el limite real de la regla, que la auditoria externa
+        senalo como no cubierto por los tests.
+
+        Una caida que alcanza el umbral y despues se revierte cuenta como
+        shift. Es deliberado: en cultivos reales el cambio a consumo suele ser
+        reversible. Pero significa que la regla NO distingue un cambio de
+        regimen permanente de una caida profunda transitoria, y eso hay que
+        decirlo en vez de suponer lo contrario.
+        """
+        v = [1, 2, 3, 4, 5, 6, 7, 10, 7, 5, 4, 3, 12, 13]
+        assert detect_shift(range(1, 15), v).occurred
 
     def test_caida_por_debajo_del_umbral(self):
         v = [1, 2, 3, 4, 3.9, 3.8, 3.7, 3.6]
@@ -105,6 +118,25 @@ class TestDatosImperfectos:
     def test_longitudes_distintas_fallan(self):
         with pytest.raises(ValueError):
             detect_shift([1, 2, 3], [1, 2])
+
+
+class TestFiltrosOpcionales:
+    """Parametros anadidos tras una auditoria externa."""
+
+    def test_min_peak_descarta_oscilaciones_cerca_de_cero(self):
+        # caida relativa del 87% sobre una serie de amplitud despreciable
+        v = [0.001, 0.002, 0.003, 0.002, 0.001, 0.0005, 0.0004, 0.0004, 0.0004]
+        assert detect_shift(range(1, 10), v).occurred
+        assert not detect_shift(range(1, 10), v, min_peak=0.01).occurred
+
+    def test_require_local_max_es_mas_estricto(self):
+        # meseta: el descenso sostenido empieza en el ultimo punto del plano,
+        # que no es un maximo local estricto
+        v = [1.0, 3.0, 3.0, 3.0, 2.0, 1.0, 0.5, 0.4]
+        laxo = detect_shift(range(1, 9), v, smooth_window=1)
+        estricto = detect_shift(range(1, 9), v, smooth_window=1, require_local_max=True)
+        assert laxo.occurred
+        assert (not estricto.occurred) or estricto.day != laxo.day
 
 
 class TestParametros:
