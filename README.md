@@ -120,6 +120,7 @@ python analysis/02_definicion_evento.py   # etiqueta + sensibilidad
 python analysis/02b_figura_evento.py      # verificacion visual
 python analysis/03_features.py            # variables de los dias 1-4
 python analysis/04_modelado.py            # regresion, Cox y controles
+python analysis/05_shap.py                # interpretacion y sus limites
 ```
 
 ### Que salio
@@ -170,6 +171,48 @@ se ve con validacion cruzada aleatoria es especifica del contexto de proceso
 y no transfiere. Para alguien que quisiera llevar esto a planta, esa es la
 conclusion operativa: un modelo asi habria que reentrenarlo por escala, no
 trasladarlo.
+
+### Que dice la interpretacion, y que no
+
+Los valores SHAP se calculan **fuera del fold de entrenamiento**: SHAP explica
+al modelo, y un modelo sobreajustado da explicaciones nitidas de su propio
+sobreajuste.
+
+La direccion de los efectos es coherente con lo que se esperaria: mas biomasa
+y crecimiento mas rapido en los dias 1-4 adelantan el shift; un cociente
+lactato/glucosa alto tambien. Mas glutamato, amonio o pH lo retrasan.
+
+Pero la magnitud engana, y el repositorio incluye las dos comprobaciones que
+lo demuestran.
+
+**Importancia no es necesidad.** El glutamato domina el ranking de SHAP
+(0.53 de |SHAP| sumado, contra 0.17 de la siguiente) y tambien encabeza la
+importancia por permutacion. Aun asi:
+
+| Conjunto | MAE (dias) |
+|---|---|
+| Baseline (mediana) | 0.835 |
+| Todas las variables | 0.575 |
+| Solo glutamato | 0.683 |
+| Todas **sin** glutamato | 0.593 |
+
+Quitarlo casi no empeora nada. SHAP y la permutacion miden cuanto **usa** el
+modelo una variable, no cuanta informacion **unica** aporta: la del glutamato
+tambien esta en las demas, y el modelo la recupera de ahi.
+
+**Parte de la senal es la identidad del proceso, no fisiologia.** El grafico
+de dependencia del glutamato no muestra una relacion continua sino dos nubes
+separadas, lo que no parece una respuesta metabolica graduada. Partiendo la
+muestra por la mediana de esa variable, el 74% del grupo alto cae en una sola
+escala de reactor, y los dos grupos difieren en el dia del evento (mediana 7
+contra 6). Es decir, la variable esta funcionando en parte como marcador de a
+que familia de cultivos pertenece el lote.
+
+Eso encaja con el leave-one-scale-out: el modelo aprende el dia caracteristico
+de cada familia de procesos y por eso no transfiere a una escala nueva. La
+lectura honesta no es "el glutamato temprano controla el shift", sino "el
+glutamato temprano ayuda a identificar de que proceso viene el lote, y cada
+proceso tiene su momento tipico de shift".
 
 ## Limitaciones
 
