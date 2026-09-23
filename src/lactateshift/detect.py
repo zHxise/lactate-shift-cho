@@ -294,6 +294,11 @@ def detect_shift_batch(
     filas = []
     for key, g in data.groupby(id_col, sort=True):
         g = g.sort_values(day_col)
-        r = detect_shift(g[day_col].to_numpy(), g[value_col].to_numpy(), **kwargs)
+        try:
+            r = detect_shift(g[day_col].to_numpy(), g[value_col].to_numpy(), **kwargs)
+        except ValueError as e:
+            # con muchas series, un error sin el identificador obliga a buscar
+            # a mano cual de ellas tiene el problema
+            raise ValueError(f"serie {key!r}: {e}") from e
         filas.append({id_col: key, **r.as_dict()})
     return pd.DataFrame(filas).set_index(id_col)

@@ -21,3 +21,7 @@ data/raw/*.xls
 outputs/tablas/*
 outputs/figuras/*
 !outputs/**/.gitkeep
+
+# salidas de examples/detectar_en_mi_csv.py
+examples/*_shift.csv
+examples/*_figuras/

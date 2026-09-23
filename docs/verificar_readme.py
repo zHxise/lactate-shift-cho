@@ -237,6 +237,12 @@ def cifras() -> list[tuple[str, str]]:
 
 
 def main() -> int:
+    # la consola de Windows puede no tener algunos caracteres (como el signo
+    # menos tipografico); se reemplazan en vez de fallar
+    try:
+        sys.stdout.reconfigure(errors="replace")
+    except AttributeError:
+        pass
     readme = (RAIZ / "README.md").read_text(encoding="utf-8")
     fallos = 0
     lista = cifras()

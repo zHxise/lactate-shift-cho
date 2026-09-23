@@ -6,6 +6,7 @@ se construye en el momento, asi que cualquiera puede correrlos.
 """
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from lactateshift import detect_shift, detect_shift_batch, make_culture, make_synthetic_cultures
@@ -171,6 +172,12 @@ class TestValidacionDeEntrada:
     def test_dia_cero(self):
         with pytest.raises(ValueError, match="empiezan en 1"):
             detect_shift([0, 1, 2], [1, 2, 3])
+
+    def test_batch_dice_que_serie_tiene_el_problema(self):
+        df = pd.DataFrame({"culture": ["A", "A", "B", "B", "B"],
+                           "day": [1, 2, 1, 2, 2], "lactate": [1, 2, 1, 2, 3]})
+        with pytest.raises(ValueError, match="serie 'B'"):
+            detect_shift_batch(df, id_col="culture", day_col="day", value_col="lactate")
 
     def test_dias_nan(self):
         with pytest.raises(ValueError, match="NaN"):

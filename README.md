@@ -60,10 +60,33 @@ print(tabla[["occurred", "day", "time"]].head())
 `time` es el dia del evento cuando ocurrio y el dia de censura cuando no, que
 es exactamente lo que piden `lifelines` o `scikit-survival`.
 
+Para probarlo con **tus propios datos**, guarda un CSV con columnas
+`culture`, `day` y `lactate` (una fila por cultivo y dia, dias enteros desde 1)
+y corre:
+
+```bash
+python examples/detectar_en_mi_csv.py examples/ejemplo_cultivos.csv
+```
+
+Imprime el dia del shift de cada cultivo y guarda una figura por cultivo con
+la curva y el dia marcado. `examples/ejemplo_cultivos.csv` trae cultivos
+sinteticos para ver el formato.
+
 Variables predictoras de una ventana temprana:
 
 ```python
+import pandas as pd
 from lactateshift import early_window_features
+
+# dos cultivos inventados, en formato largo: una fila por cultivo y dia
+datos = pd.DataFrame({
+    "culture": ["A"] * 5 + ["B"] * 5,
+    "day":     [1, 2, 3, 4, 5] * 2,
+    "lactate": [0.5, 1.0, 1.8, 2.6, 3.0,   0.4, 0.7, 1.1, 1.4, 1.6],
+    "glucose": [5.0, 4.6, 4.1, 3.5, 3.0,   5.0, 4.8, 4.5, 4.2, 4.0],
+    "vcd":     [0.3, 0.6, 1.1, 1.8, 2.4,   0.3, 0.5, 0.8, 1.1, 1.4],
+    "scale":   [5] * 5 + [50] * 5,
+})
 
 X = early_window_features(
     datos, id_col="culture", day_col="day",
@@ -72,6 +95,7 @@ X = early_window_features(
     ratios=[("lactate", "vcd")],       # cocientes al cierre de la ventana
     static_cols=["scale"],             # constantes conocidas desde el inicio
 )
+print(X[["lactate_last", "lactate_slope", "lactate_over_vcd", "scale"]])
 ```
 
 Nada de lo que devuelve depende de un dato posterior al dia 4 ni de otras
@@ -459,14 +483,14 @@ estructuralmente distinta.
 pytest
 ```
 
-48 tests, ninguno depende del dataset con copyright: todo lo que
+52 tests, ninguno depende del dataset con copyright: todo lo que
 verifican se construye en el momento. Cubren el rebote tardio, la caida
 profunda reversible, dias faltantes, NaN internos, entradas invalidas (dias
 repetidos, no enteros o en cero), la propiedad de maximo local, el
 refinamiento del pico en los dos sentidos, que la cuenta de dias medidos no
 incluya los rellenados, que la pendiente use solo mediciones reales, que las
-variables no cambien al agregar dias posteriores, y que los p-valores nunca
-sean cero.
+variables no cambien al agregar dias posteriores, que los p-valores nunca
+sean cero, y que los ejemplos de codigo de este README corran tal cual.
 
 ## Cita del dataset
 
