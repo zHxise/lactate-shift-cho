@@ -51,8 +51,10 @@ def _causal_window(
     sobre la tabla rellenada cuenta valores heredados como si fueran
     mediciones nuevas.
     """
-    w = g[g[day_col] <= window].set_index(day_col)
-    w = w.reindex(np.arange(1, window + 1))
+    w = g[g[day_col] <= window]
+    if w[day_col].duplicated().any():
+        raise ValueError("hay dias repetidos dentro de una misma serie")
+    w = w.set_index(day_col).reindex(np.arange(1, window + 1))
     medido = w[value_cols].notna()
     w[value_cols] = w[value_cols].ffill()
     return w, medido
@@ -73,11 +75,20 @@ def early_window_features(
     Para cada columna en ``value_cols`` genera cuatro variables:
 
     ``<col>_last``
-        Valor al cerrar la ventana: el nivel alcanzado.
+        Ultimo valor medido dentro de la ventana: el nivel alcanzado. Si falta
+        el ultimo dia, es el del dia medido mas reciente (relleno hacia atras,
+        nunca hacia adelante).
     ``<col>_slope``
-        Pendiente por minimos cuadrados: la velocidad de cambio.
+        Pendiente por minimos cuadrados, calculada SOLO con los dias medidos.
     ``<col>_mean``
-        Promedio en la ventana.
+        Promedio de los dias medidos.
+
+    Por que la pendiente y el promedio no usan los dias rellenados: una
+    version anterior los calculaba sobre la serie ya rellenada. Si faltaba el
+    dia 3, heredaba el valor del dia 2, y la pendiente se aplanaba con un dato
+    que nadie midio. No era fuga (el relleno es hacia atras) pero si un sesgo
+    evitable: el relleno sirve para tener un "ultimo valor conocido", no para
+    fabricar puntos de una regresion.
     ``<col>_n``
         Cuantos dias se midieron de verdad, contados ANTES del relleno hacia
         atras. Importa: una pendiente calculada sobre dos puntos no merece la
@@ -104,11 +115,13 @@ def early_window_features(
         f: dict[str, float] = {}
 
         for col in value_cols:
-            x = w[col].to_numpy(dtype=float)
+            x = w[col].to_numpy(dtype=float)           # rellenada hacia atras
+            m = medido[col].to_numpy()                 # lo realmente medido
+            x_med = np.where(m, x, np.nan)
             f[f"{col}_last"] = x[-1]
-            f[f"{col}_slope"] = slope(days, x)
-            f[f"{col}_mean"] = np.nanmean(x) if np.any(np.isfinite(x)) else np.nan
-            f[f"{col}_n"] = int(medido[col].sum())
+            f[f"{col}_slope"] = slope(days, x_med)
+            f[f"{col}_mean"] = float(np.nanmean(x_med)) if m.any() else np.nan
+            f[f"{col}_n"] = int(m.sum())
 
         for num, den in ratios:
             a, b = w[num].to_numpy(dtype=float)[-1], w[den].to_numpy(dtype=float)[-1]

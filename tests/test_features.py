@@ -42,12 +42,30 @@ class TestSinFuga:
         pd.testing.assert_frame_equal(fc, fl)
 
     def test_hueco_hereda_del_dia_anterior_no_del_posterior(self):
+        # los dias 3 y 4 faltan y el 5 existe: el ultimo valor debe venir del
+        # dia 2, jamas del dia 5
+        df = pd.DataFrame({"culture": "A", "day": [1, 2, 5],
+                           "lactate": [1.0, 2.0, 99.0]})
+        f = early_window_features(df, id_col="culture", day_col="day",
+                                  value_cols=["lactate"], window=4)
+        assert f.loc["A", "lactate_last"] == 2.0
+
+    def test_pendiente_y_promedio_solo_con_dias_medidos(self):
+        """Los dias rellenados no deben entrar como puntos de la regresion."""
         df = pd.DataFrame({"culture": "A", "day": [1, 2, 4],
                            "lactate": [1.0, 2.0, 10.0]})
         f = early_window_features(df, id_col="culture", day_col="day",
                                   value_cols=["lactate"], window=4)
-        # el dia 3 falta: debe heredar el 2.0 del dia 2, nunca el 10.0 del dia 4
-        assert np.isclose(f.loc["A", "lactate_mean"], (1 + 2 + 2 + 10) / 4)
+        assert np.isclose(f.loc["A", "lactate_mean"], (1 + 2 + 10) / 3)
+        esperado = np.polyfit([1, 2, 4], [1, 2, 10], 1)[0]
+        assert np.isclose(f.loc["A", "lactate_slope"], esperado)
+
+    def test_dias_repetidos_fallan(self):
+        df = pd.DataFrame({"culture": "A", "day": [1, 2, 2, 3],
+                           "lactate": [1.0, 2.0, 2.1, 3.0]})
+        with pytest.raises(ValueError, match="repetidos"):
+            early_window_features(df, id_col="culture", day_col="day",
+                                  value_cols=["lactate"], window=4)
 
     def test_no_se_imputa_lo_que_falta_por_completo(self):
         df = pd.DataFrame({"culture": "A", "day": [1, 2, 3, 4],

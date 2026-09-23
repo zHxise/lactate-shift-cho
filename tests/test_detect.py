@@ -6,7 +6,6 @@ se construye en el momento, asi que cualquiera puede correrlos.
 """
 
 import numpy as np
-import pandas as pd
 import pytest
 
 from lactateshift import detect_shift, detect_shift_batch, make_culture, make_synthetic_cultures
@@ -129,14 +128,53 @@ class TestFiltrosOpcionales:
         assert detect_shift(range(1, 10), v).occurred
         assert not detect_shift(range(1, 10), v, min_peak=0.01).occurred
 
-    def test_require_local_max_es_mas_estricto(self):
-        # meseta: el descenso sostenido empieza en el ultimo punto del plano,
-        # que no es un maximo local estricto
+
+
+class TestPropiedadMaximoLocal:
+    """El punto que detecta la regla es siempre un maximo local de la serie
+    suavizada. No se impone: se sigue de la regla. Una auditoria externa lo
+    puso en duda y una verificacion mal hecha lo "confirmo"; este test es la
+    comprobacion correcta."""
+
+    def test_en_series_aleatorias(self):
+        rng = np.random.default_rng(0)
+        eventos = 0
+        for _ in range(300):
+            n = int(rng.integers(5, 18))
+            v = np.clip(np.cumsum(rng.normal(0, 1, n)) + 10, 0.01, None)
+            for w in (1, 3, 5):
+                for k in (1, 2, 3):
+                    r = detect_shift(range(1, n + 1), v, smooth_window=w,
+                                     n_consecutive=k, refine_peak=False)
+                    if r.occurred:
+                        eventos += 1
+                        s = smooth(v, w)
+                        i = int(r.day) - 1
+                        assert i == 0 or s[i] >= s[i - 1]
+        assert eventos > 100, "la prueba debe cubrir suficientes eventos"
+
+    def test_meseta_se_detecta_en_su_ultimo_punto(self):
         v = [1.0, 3.0, 3.0, 3.0, 2.0, 1.0, 0.5, 0.4]
-        laxo = detect_shift(range(1, 9), v, smooth_window=1)
-        estricto = detect_shift(range(1, 9), v, smooth_window=1, require_local_max=True)
-        assert laxo.occurred
-        assert (not estricto.occurred) or estricto.day != laxo.day
+        r = detect_shift(range(1, 9), v, smooth_window=1)
+        assert r.occurred and r.day == 4.0
+
+
+class TestValidacionDeEntrada:
+    def test_dias_no_enteros(self):
+        with pytest.raises(ValueError, match="enteros"):
+            detect_shift([1, 2.5, 3], [1, 2, 3])
+
+    def test_dias_repetidos(self):
+        with pytest.raises(ValueError, match="repetidos"):
+            detect_shift([1, 2, 2, 3], [1, 2, 3, 4])
+
+    def test_dia_cero(self):
+        with pytest.raises(ValueError, match="empiezan en 1"):
+            detect_shift([0, 1, 2], [1, 2, 3])
+
+    def test_dias_nan(self):
+        with pytest.raises(ValueError, match="NaN"):
+            detect_shift([1, np.nan, 3], [1, 2, 3])
 
 
 class TestParametros:
@@ -177,6 +215,16 @@ class TestRefinamientoDelPico:
             errores[refine] = (det["day"] - det["shift_day_real"]).mean()
         assert errores[False] < -0.5, "sin refinamiento el sesgo deberia ser notorio"
         assert abs(errores[True]) < 0.3, "con refinamiento el sesgo casi desaparece"
+
+    def test_refinamiento_corrige_tambien_hacia_adelante(self):
+        """Pico brusco y caida lenta: el suavizado corre el maximo hacia
+        ADELANTE (dia 8) y el refinamiento lo devuelve al maximo real (dia 7).
+        En los cultivos reales este es el caso mas frecuente."""
+        v = [1, 2, 3, 4, 5, 6, 10, 9.5, 9, 8.5, 8, 7.5, 7, 6, 5]
+        sin = detect_shift(range(1, 16), v, refine_peak=False)
+        con = detect_shift(range(1, 16), v, refine_peak=True)
+        assert sin.day == 8.0
+        assert con.day == 7.0
 
     def test_dia_detectado_cae_dentro_de_un_dia_del_real(self):
         series, verdad = make_synthetic_cultures(40, seed=3)

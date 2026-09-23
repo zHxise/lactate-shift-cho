@@ -28,9 +28,9 @@ ETAPAS = [
     (ROJO, "3. Variables días 1-4",
      ["nivel al día 4", "pendiente", "promedio", "n.º de mediciones", "cocientes", "28 variables"]),
     (NARANJA, "4. Modelos",
-     ["Random Forest", "Ridge", "Cox (supervivencia)", "baseline: la mediana"]),
+     ["Random Forest", "Ridge", "Cox (supervivencia)", "baselines: mediana", "global y por escala"]),
     (AMBAR, "5. Validación e\ninterpretación",
-     ["validación cruzada", "permutación", "leave-one-scale-out", "SHAP + ablación"]),
+     ["validación cruzada", "permutación", "bootstrap por cultivo", "leave-one-scale-out", "SHAP + ablación"]),
 ]
 
 ENTRE = ["todo\nel cultivo", "día del shift\n+ censurados", "una fila\npor cultivo", "día estimado"]
@@ -113,10 +113,19 @@ ax2.text(0.5, 0.218,
          "ni de otros cultivos del conjunto",
          ha="center", va="center", fontsize=10.5, color="#27632F", fontweight="bold", zorder=4)
 
-ax2.text(0.5, 0.075,
-         "Error de 0.58 días frente a 0.84 del baseline   ·   c-index de Cox 0.795   ·   "
-         "pero el modelo no transfiere a una escala de reactor que no vio",
-         ha="center", va="center", fontsize=10.5, color=TINTA)
+# Las cifras se leen de las salidas del analisis en vez de escribirse a mano:
+# una version anterior del diagrama siguio mostrando numeros viejos despues de
+# re-ejecutar el analisis.
+_tab = Path(__file__).resolve().parents[1] / "outputs" / "tablas"
+try:
+    import pandas as pd
+    _mae = pd.read_csv(_tab / "baseline_por_escala_mae.csv", index_col=0)["mae"]
+    _resultado = (f"Error de {_mae['rf']:.2f} días frente a {_mae['escala']:.2f} de predecir el día típico "
+                  f"de cada escala   ·   la ventaja se mantiene dentro de una misma escala   ·   "
+                  f"pero no se traslada a una escala que el modelo no vio")
+except FileNotFoundError:
+    _resultado = "Corre los scripts de analysis/ para ver los resultados"
+ax2.text(0.5, 0.075, _resultado, ha="center", va="center", fontsize=10.2, color=TINTA)
 
 fig.suptitle("Cómo funciona el proyecto: del biorreactor a la predicción",
              fontsize=15.5, fontweight="bold", y=0.962)

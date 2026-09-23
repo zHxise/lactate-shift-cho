@@ -23,13 +23,16 @@ Hay shift en el primer dia ``t`` tal que:
 
 Que detecta y que no
 --------------------
-La regla detecta **el inicio de un descenso sostenido y profundo**. Eso no es
-exactamente lo mismo que "el primer maximo local", aunque en la mayoria de las
-series coinciden: ``t`` es el primer punto desde el que baja, y el codigo no
-exige que el punto anterior sea menor. En series con meseta en el maximo, ``t``
-cae al final de la meseta y no en su primer punto. ``require_local_max=True``
-impone la condicion estricta; por omision esta desactivada porque en una
-meseta ruidosa la condicion estricta desplaza el evento de forma arbitraria.
+El punto ``t`` que elige la regla es siempre un maximo local de la serie
+suavizada (en una meseta, su ultimo punto). No hace falta imponerlo: se sigue
+de la regla. Si ``t`` estuviera en plena bajada (valor anterior mayor), el
+punto anterior tambien tendria derivada negativa los dias siguientes y una
+caida relativa todavia mayor, asi que habria cumplido primero. Esta propiedad
+tiene un test que la verifica sobre miles de series aleatorias.
+
+(Una auditoria externa afirmo que el codigo no garantizaba el maximo local, y
+una verificacion mal hecha lo "confirmo": comparaba el dia ya refinado por
+``refine_peak``, no el punto que detecta la regla. Se corrigio.)
 
 Una caida profunda seguida de recuperacion **si** cuenta como shift. Es
 deliberado: en cultivos reales el cambio a consumo de lactato es a menudo
@@ -53,12 +56,12 @@ fue reversible.
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
-from typing import Iterable, Sequence
+from typing import Sequence
 
 import numpy as np
 import pandas as pd
 
-__all__ = ["ShiftResult", "detect_shift", "detect_shift_batch", "regularize"]
+__all__ = ["ShiftResult", "detect_shift", "detect_shift_batch", "regularize", "smooth"]
 
 
 @dataclass(frozen=True)
@@ -70,12 +73,14 @@ class ShiftResult:
     occurred:
         True si se detecto el shift.
     day:
-        Dia del shift (el maximo local a partir del cual empieza el descenso),
-        o None si no ocurrio.
+        Dia del shift, o None si no ocurrio. Con ``refine_peak`` puede
+        diferir en un dia del punto donde la regla se cumplio sobre la serie
+        suavizada (ver ``detect_shift``).
     drop_fraction:
-        Caida relativa alcanzada respecto al valor del maximo, o None.
+        Caida relativa alcanzada, medida sobre la serie suavizada desde el
+        punto de deteccion, o None.
     peak_value:
-        Valor suavizado en el dia del shift, o None.
+        Valor de la serie suavizada en el punto de deteccion, o None.
     censoring_day:
         Ultimo dia observado. Es el tiempo de censura para analisis de
         supervivencia cuando ``occurred`` es False.
@@ -121,8 +126,19 @@ def regularize(
         raise ValueError("la serie esta vacia")
     if days.size != values.size:
         raise ValueError("days y values deben tener la misma longitud")
+    # Sin estas comprobaciones, un dia 2.5 se truncaba a 2 en silencio, un dia
+    # repetido hacia fallar reindex con un error opaco, y un dia 0 desaparecia
+    # de la rejilla sin aviso.
+    if np.any(~np.isfinite(days)):
+        raise ValueError("days contiene NaN o infinitos")
+    if np.any(days != np.round(days)):
+        raise ValueError("days debe contener dias enteros (muestreo diario)")
+    if len(np.unique(days)) != len(days):
+        raise ValueError("days contiene dias repetidos")
+    if np.min(days) < 1:
+        raise ValueError("los dias empiezan en 1")
 
-    grid = np.arange(1, int(np.nanmax(days)) + 1)
+    grid = np.arange(1, int(np.max(days)) + 1)
     s = pd.Series(values, index=days.astype(int)).reindex(grid)
     if interpolate:
         s = s.interpolate(method="linear", limit_direction="both")
@@ -157,7 +173,6 @@ def detect_shift(
     min_day: float | None = None,
     regularize_grid: bool = True,
     refine_peak: bool = True,
-    require_local_max: bool = False,
     min_peak: float | None = None,
 ) -> ShiftResult:
     """Detecta el lactate shift en una serie.
@@ -176,25 +191,28 @@ def detect_shift(
     drop_threshold:
         Caida minima, como fraccion del valor del maximo local.
     min_day:
-        Si se da, se ignoran los shifts anteriores a ese dia. Sirve cuando la
-        serie se usa para prediccion y hay una ventana de observacion previa:
-        un shift dentro de esa ventana no es un evento anticipable.
+        Si el primer shift ocurre antes de este dia, devuelve
+        ``occurred=False`` con la razon en ``reason``. No busca un shift
+        posterior: el primer cambio ya ocurrio. Cuidado al usarlo en analisis
+        de supervivencia: ese resultado NO es una censura, y tratarlo como tal
+        seria un error; esos casos se excluyen, no se censuran.
     regularize_grid:
         Si True, la serie se lleva a rejilla diaria e interpola huecos antes de
         derivar.
     refine_peak:
-        Corrige el sesgo del suavizado. Una media movil centrada desplaza el
-        maximo hacia atras cuando la caida es mas rapida que la subida, que es
-        el caso tipico de un cultivo: sin esta correccion el dia detectado sale
-        sistematicamente un dia antes del real. Con ``refine_peak=True`` el dia
-        se reajusta al maximo de la serie sin suavizar dentro de
-        ``+-(smooth_window // 2)`` dias. Detectado con los cultivos sinteticos
-        de :mod:`lactateshift.datasets`, donde el dia real se conoce.
-    require_local_max:
-        Exige ademas que el punto sea un maximo local estricto de la serie
-        suavizada (que el valor anterior sea menor). Por omision False: en una
-        meseta ruidosa la condicion estricta desplaza el evento de forma
-        arbitraria. Activarlo es la lectura literal de "primer maximo local".
+        Corrige el desplazamiento que introduce el suavizado. Una media movil
+        centrada corre el maximo hacia el lado donde la curva es mas suave: si
+        la caida es mas brusca que la subida lo corre hacia atras, y si la
+        caida es mas lenta lo corre hacia adelante. Con ``refine_peak=True``
+        el dia se reajusta al maximo de la serie sin suavizar dentro de
+        ``+-(smooth_window // 2)`` dias, lo que corrige en ambos sentidos.
+
+        En los cultivos sinteticos de :mod:`lactateshift.datasets` (subida que
+        se aplana, caida brusca) el desplazamiento es hacia atras. En los 101
+        eventos del caso de estudio el refinamiento movio el dia en 40: 31
+        hacia atras y 9 hacia adelante, es decir, ahi la caida suele ser mas
+        lenta que la subida. Los sinteticos no reproducen bien esa forma: son
+        utiles para verificar el mecanismo, no para describir cultivos reales.
     min_peak:
         Amplitud minima del maximo, en las unidades de la serie. Sin este
         filtro, una serie que oscile cerca de cero puede dar una caida
@@ -229,8 +247,6 @@ def detect_shift(
         if not np.isfinite(s[i]) or s[i] <= 0:
             continue
         if min_peak is not None and s[i] < min_peak:
-            continue
-        if require_local_max and i > 0 and not (s[i] > s[i - 1]):
             continue
         if not np.all(deriv[i : i + n_consecutive] < 0):
             continue

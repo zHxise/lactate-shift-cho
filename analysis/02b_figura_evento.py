@@ -15,7 +15,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from lactateshift import detect_shift_batch
 from lactateshift.detect import regularize, smooth
 from _comun import FIGURAS, TABLAS, VENTANA, cargar
 

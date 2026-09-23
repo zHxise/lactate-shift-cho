@@ -34,10 +34,11 @@ import warnings
 
 import numpy as np
 import pandas as pd
+from sklearn.base import clone
 from sklearn.dummy import DummyRegressor
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.impute import SimpleImputer
-from sklearn.linear_model import Ridge, RidgeCV
+from sklearn.linear_model import RidgeCV
 from sklearn.metrics import mean_absolute_error
 from sklearn.model_selection import RepeatedKFold
 from sklearn.pipeline import Pipeline
@@ -52,9 +53,12 @@ ALPHAS = np.logspace(-3, 3, 25)
 
 
 def pipe(modelo):
+    # clone: cada ajuste recibe una copia sin entrenar. Reusar la misma
+    # instancia entre folds funciona hoy, pero se rompe en silencio con
+    # cualquier modelo que conserve estado entre ajustes (warm_start).
     return Pipeline([("imp", SimpleImputer(strategy="median")),
                      ("esc", StandardScaler()),
-                     ("mod", modelo)])
+                     ("mod", clone(modelo))])
 
 
 def mae_cv(modelo, X, y, n_rep=5, seed=SEED) -> tuple[float, float]:
@@ -111,6 +115,7 @@ def main() -> None:
     # encontrado en auditoria externa.
     print("\n=== Prueba de permutacion (nucleo) ===")
     Xn = con_ev[nucleo]
+    perm_filas = []
     for nombre, hacer in [("ridge", lambda: RidgeCV(alphas=ALPHAS)),
                           ("random forest", lambda: RandomForestRegressor(
                               n_estimators=150, min_samples_leaf=3,
@@ -122,11 +127,16 @@ def main() -> None:
                                y, n_permutations=n_perm, seed=SEED, lower_is_better=True)
         print(f"  {nombre:14s} MAE observado {res['observed']:.3f} | "
               f"nulo {res['null_mean']:.3f} +- {res['null_sd']:.3f} | "
-              f"p = {res['p_value']:.3f}  ({n_perm} barajadas)")
+              f"p = {res['p_value']:.3f}  ({n_perm} barajadas; minimo posible {res['p_min']:.3f})")
+        perm_filas.append({"modelo": nombre, "mae_observado": res["observed"],
+                           "nulo_media": res["null_mean"], "nulo_sd": res["null_sd"],
+                           "p_valor": res["p_value"], "barajadas": n_perm})
+    pd.DataFrame(perm_filas).to_csv(TABLAS / "permutacion.csv", index=False)
 
     # --- leave-one-scale-out ---------------------------------------------
     print("\n=== Leave-one-scale-out (escalas con >=15 cultivos) ===")
     print("La prueba dura: transfiere el modelo a una escala que nunca vio?")
+    loso_filas = []
     for nombre, m in modelos.items():
         def fit_predict(Xtr, ytr, Xte, _m=m):
             return pipe(_m).fit(Xtr, ytr).predict(Xte)
@@ -136,6 +146,12 @@ def main() -> None:
         print(f"\n{nombre}:")
         print(d.rename(columns={"score": "MAE"}).round(3).to_string(index=False))
         print(f"  MAE ponderado: {d.attrs['weighted_mean']:.3f}")
+        for _, fila in d.iterrows():
+            loso_filas.append({"modelo": nombre, "escala": fila["group"],
+                               "n_test": fila["n_test"], "mae": fila["score"]})
+        loso_filas.append({"modelo": nombre, "escala": "ponderado",
+                           "n_test": int(d["n_test"].sum()), "mae": d.attrs["weighted_mean"]})
+    pd.DataFrame(loso_filas).to_csv(TABLAS / "loso.csv", index=False)
 
     # --- Cox --------------------------------------------------------------
     print("\n=== Cox: aprovecha los cultivos censurados ===")
@@ -177,8 +193,14 @@ def main() -> None:
                                pd.Series(E.to_numpy()[k], index=E.index, name="evento"))
                       for k in (rng.permutation(len(t)) for _ in range(30))])
     print(f"  permutacion: nulo {nulos.mean():.3f} +- {nulos.std():.3f} "
-          f"-> p = {(nulos >= real).mean():.3f}")
-    print(f"  control solo-escala: {cox_cidx(t[['escala']], T, E):.3f}")
+          f"-> p = {((nulos >= real).sum() + 1) / (len(nulos) + 1):.3f} "
+          f"(minimo posible con {len(nulos)} barajadas: {1 / (len(nulos) + 1):.3f})")
+    control = cox_cidx(t[['escala']], T, E)
+    print(f"  control solo-escala: {control:.3f}")
+    pd.DataFrame([{"c_index": real, "nulo_media": nulos.mean(), "nulo_sd": nulos.std(),
+                   "p_valor": ((nulos >= real).sum() + 1) / (len(nulos) + 1),
+                   "barajadas": len(nulos), "control_solo_escala": control}]
+                 ).to_csv(TABLAS / "cox.csv", index=False)
     print(f"  empates en el tiempo: {T.value_counts().sort_index().to_dict()}")
     print(f"\nResultados en {TABLAS}")
 

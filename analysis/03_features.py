@@ -30,41 +30,15 @@ declararla. Es otra razon para preferir cocientes y pendientes sobre niveles.
 Ejecutar:  python analysis/03_features.py
 """
 
-import numpy as np
 import pandas as pd
 
-from lactateshift import early_window_features
-from _comun import TABLAS, VENTANA, cargar
-
-NUCLEO = ["[Lactate]", "[Glucose]", "VCD", "[NH3]", "pH", "[Glutamate]"]
-EXTENDIDAS = ["[Glutamine]", "Osmolality"]
-COCIENTES = [("[Lactate]", "[Glucose]"), ("[Lactate]", "VCD")]
-
-
-def limpiar_nombres(df: pd.DataFrame) -> pd.DataFrame:
-    """Nombres de columna utilizables como identificadores."""
-    def f(c: str) -> str:
-        return (c.replace("[", "").replace("]", "").replace("+", "")
-                 .replace("-", "").replace(" ", "_").lower())
-    return df.rename(columns=f)
-
+from _comun import TABLAS, cargar, construir_variables
 
 def main() -> None:
     raw = cargar("Raw Data")
     et = pd.read_csv(TABLAS / "etiquetas_evento.csv", index_col="cult")
 
-    X = early_window_features(
-        raw, id_col="cult", day_col="day",
-        value_cols=NUCLEO + EXTENDIDAS, window=VENTANA,
-        ratios=COCIENTES, static_cols=["Culture Volume"],
-    )
-    X = limpiar_nombres(X).rename(columns={"culture_volume": "escala"})
-
-    # Crecimiento relativo: un cultivo que crece mas rapido agota sustrato
-    # antes y deberia cambiar de regimen antes. Es la hipotesis mas obvia y
-    # hay que vencerla antes de contar historias metabolicas mas finas.
-    v = raw[raw["day"] <= VENTANA].sort_values("day").groupby("cult")["VCD"]
-    X["vcd_crec_rel"] = v.last() / v.first().replace(0, np.nan)
+    X = construir_variables(raw, extendidas=True)
 
     tabla = X.join(et[["occurred", "day", "time", "excluir"]]
                    .rename(columns={"occurred": "evento", "day": "dia_evento",

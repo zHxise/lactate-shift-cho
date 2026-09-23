@@ -105,6 +105,7 @@ def main() -> None:
     for k, nombre in [("global", "mediana global"), ("escala", "mediana de la escala"),
                       ("ridge", "ridge"), ("rf", "random forest")]:
         print(f"  {nombre:22s} {e[k].mean():.3f}")
+    e.mean().rename("mae").to_csv(TABLAS / "baseline_por_escala_mae.csv")
 
     print("\nDiferencia de error (baseline - modelo), bootstrap sobre cultivos:")
     print("positivo = el modelo erra menos\n")
@@ -148,17 +149,23 @@ def main() -> None:
     med = []
     for tr, te in RepeatedKFold(n_splits=5, n_repeats=5, random_state=SEED).split(s):
         med.append(np.abs(ys.iloc[te].to_numpy() - ys.iloc[tr].median()).mean())
+    mae_ridge = mae_dentro(ys, lambda: RidgeCV(alphas=np.logspace(-3, 3, 25)), 5)
     print(f"  mediana       {np.mean(med):.3f}")
-    print(f"  ridge         {mae_dentro(ys, lambda: RidgeCV(alphas=np.logspace(-3, 3, 25)), 5):.3f}")
+    print(f"  ridge         {mae_ridge:.3f}")
     obs = mae_dentro(ys, lambda: rf(150), 2)
     print(f"  random forest {obs:.3f}")
 
     rng = np.random.default_rng(SEED)
     nulos = np.array([mae_dentro(pd.Series(rng.permutation(ys.to_numpy()), index=ys.index),
                                  lambda: rf(150), 1) for _ in range(40)])
-    p = (nulos <= obs).mean()
-    print(f"\n  permutacion dentro de la escala (RF, 40 barajadas): nulo {nulos.mean():.3f} "
-          f"+- {nulos.std():.3f}, p = {p:.3f}  (resolucion minima 0.025)")
+    p = ((nulos <= obs).sum() + 1) / (len(nulos) + 1)
+    print(f"\n  permutacion dentro de la escala (RF, {len(nulos)} barajadas): nulo {nulos.mean():.3f} "
+          f"+- {nulos.std():.3f}, p = {p:.3f}  (minimo posible {1 / (len(nulos) + 1):.3f})")
+    pd.DataFrame([{"escala": grande, "n": len(s), "mediana": float(np.mean(med)),
+                   "ridge": mae_ridge, "random_forest": obs,
+                   "nulo_media": nulos.mean(), "nulo_sd": nulos.std(),
+                   "p_valor": p, "barajadas": len(nulos)}]
+                 ).to_csv(TABLAS / "dentro_de_escala.csv", index=False)
 
     # ------------------------------------------------------------------ C
     print("\n" + "=" * 72)

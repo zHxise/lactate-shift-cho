@@ -26,7 +26,6 @@ de mecanismo.
 Ejecutar:  python analysis/05_shap.py
 """
 
-import re
 import warnings
 
 import matplotlib
@@ -34,6 +33,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from sklearn.base import clone
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.inspection import permutation_importance
@@ -63,6 +63,11 @@ def variable_base(col: str) -> str:
 
 
 def hacer_rf():
+    # Sin StandardScaler, a diferencia del script 04. No cambia el modelo: un
+    # arbol ordena y corta cada variable por umbrales, y un reescalado lineal
+    # conserva el orden y lleva cada umbral a su equivalente, asi que las
+    # particiones y predicciones son las mismas. Si importa para leer SHAP:
+    # asi los valores de las variables quedan en sus unidades originales.
     return RandomForestRegressor(n_estimators=300, min_samples_leaf=3,
                                  random_state=SEED, n_jobs=-1)
 
@@ -117,6 +122,7 @@ def main() -> None:
     comp["rank_perm"] = comp["permutacion"].rank(ascending=False)
     comp.to_csv(TABLAS / "shap_vs_permutacion.csv")
     rho = comp["shap"].corr(comp["permutacion"], method="spearman")
+    pd.DataFrame([{"rho_spearman": rho}]).to_csv(TABLAS / "shap_rho.csv", index=False)
     print(comp.round(4).to_string())
     print(f"\ncorrelacion de rangos entre los dos metodos: rho = {rho:.2f}")
 
@@ -137,6 +143,7 @@ def main() -> None:
         signo = "mas alto -> shift MAS TARDE" if r > 0 else "mas alto -> shift MAS TEMPRANO"
         filas.append({"variable": c, "rho(valor, shap)": round(r, 3), "lectura": signo})
     print(pd.DataFrame(filas).to_string(index=False))
+    pd.DataFrame(filas).to_csv(TABLAS / "shap_direccion.csv", index=False)
 
     # --- ablacion: importancia no es lo mismo que necesidad ---------------
     # SHAP y la permutacion miden cuanto USA el modelo una variable. No miden
@@ -152,7 +159,7 @@ def main() -> None:
     def mae_cv(modelo, cols, n_rep=5):
         cv = RepeatedKFold(n_splits=5, n_repeats=n_rep, random_state=SEED)
         pl = lambda: Pipeline([("imp", SimpleImputer(strategy="median")),
-                               ("esc", StandardScaler()), ("mod", modelo)])
+                               ("esc", StandardScaler()), ("mod", clone(modelo))])
         return float(np.mean([
             mean_absolute_error(y.iloc[te], pl().fit(X[cols].iloc[tr], y.iloc[tr])
                                 .predict(X[cols].iloc[te]))

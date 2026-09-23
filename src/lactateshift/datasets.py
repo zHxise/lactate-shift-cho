@@ -8,6 +8,11 @@ correr los tests y ver un ejemplo completo sin conseguir ese archivo.
 
 Los datos sinteticos NO reproducen la biologia de un cultivo real. Sirven
 para verificar que el detector hace lo que dice, no para sacar conclusiones.
+
+Tampoco reproducen su forma: aqui la subida se aplana antes del maximo y la
+caida es brusca, mientras que en los 106 cultivos del caso de estudio la caida
+suele ser mas lenta que la subida. Se comprobo al ver que la correccion del
+suavizado movia el dia en sentidos opuestos en unos y otros.
 """
 
 from __future__ import annotations

@@ -17,10 +17,12 @@ Este repositorio tiene dos partes:
 2. **`analysis/`**, un caso de estudio sobre 106 cultivos CHO industriales de
    5 a 500 L, que intenta predecir el dia del shift usando solo los dias 1-4.
 
-El caso de estudio llega a un **resultado mixto y eso es parte del punto**: hay
-senal cuando entrenamiento y prueba mezclan escalas de reactor, pero el modelo
-no transfiere a una escala que no vio. Esta documentado como hallazgo, no
-escondido.
+El caso de estudio llega a un **resultado mixto, y eso es parte del punto**.
+Las variables de los dias 1-4 predicen el dia del shift mejor que el dia
+tipico de cada escala de reactor, incluso dentro de una misma escala. Pero esa
+relacion no se traslada a una escala que el modelo no vio: es especifica de
+cada contexto de proceso. Las dos cosas estan documentadas, con los
+experimentos que las sostienen y los errores que se corrigieron en el camino.
 
 ![Pipeline del proyecto](docs/pipeline.png)
 
@@ -83,39 +85,56 @@ Hay shift en el primer dia `t` tal que:
 
 1. la derivada de la serie suavizada es negativa durante `n_consecutive` dias
    a partir de `t`, y
-2. el valor cae desde el maximo local en `t` al menos `drop_threshold` veces
-   ese maximo, **antes** de que la serie vuelva a superarlo.
+2. el valor cae desde `t` al menos `drop_threshold` veces su valor, **antes**
+   de que la serie vuelva a superarlo.
 
 La condicion 2, con esa restriccion, descarta las caidas que se recuperan
 antes de alcanzar el umbral.
+
+El punto `t` es siempre un **maximo local** de la serie suavizada (en una
+meseta, su ultimo punto). No se impone: se sigue de la regla. Si `t`
+estuviera en plena bajada, el punto anterior tambien cumpliria las dos
+condiciones con una caida mayor y habria sido elegido primero. Hay un test que
+lo comprueba sobre cientos de series aleatorias.
 
 **Lo que la regla no hace**, y conviene decirlo porque es facil suponer lo
 contrario: una caida profunda que despues se revierte **si** cuenta como
 shift. Es deliberado — en cultivos reales el cambio a consumo suele ser
 reversible y el lactato vuelve a subir en fase tardia — pero significa que la
 regla detecta *el inicio de un descenso sostenido y profundo*, no *un cambio
-de regimen permanente*. Hay un test que documenta ese limite. Tampoco filtra
-por amplitud absoluta salvo que se le pase `min_peak`: sin ese parametro, una
-serie que oscile cerca de cero puede producir una caida relativa del 30% que
-es solo ruido analitico.
+de regimen permanente*. Tampoco filtra por amplitud absoluta salvo que se le
+pase `min_peak`: sin ese parametro, una serie que oscile cerca de cero puede
+producir una caida relativa del 30% que es solo ruido analitico.
 
 **Por que el primer maximo local y no el maximo global.** Una parte de los
 cultivos hace el shift, consume lactato varios dias y despues vuelve a
 producirlo al final hasta superar el pico inicial. Una regla anclada en el
 maximo global marca esos cultivos como "sin shift", lo cual es falso: el shift
-ocurrio, solo fue reversible. En el caso de estudio eso movia el conteo de 76
-a 101 cultivos de 106. El error se descubrio graficando las curvas, no
+ocurrio, solo fue reversible. En el caso de estudio, con los mismos
+parametros, la regla del maximo global detecta 76 de 106 cultivos y la del
+primer maximo local 101. El error se descubrio graficando las curvas, no
 mirando numeros.
 
-**Correccion del sesgo del suavizado.** Una media movil centrada desplaza el
-maximo hacia atras cuando la caida es mas rapida que la subida, que es el caso
-tipico de un cultivo. Sin corregirlo, el dia detectado salia sistematicamente
-un dia antes del real. Con `refine_peak=True` (por omision) el dia se reajusta
-al maximo de la serie sin suavizar en una vecindad estrecha. En los cultivos
-sinteticos, donde el dia real se conoce, el sesgo medio pasa de −0.91 a −0.18
-dias y los aciertos exactos de 3/34 a 29/34. Es la razon de ser de
-`lactateshift.datasets`: un detector sin datos de verdad conocida no se puede
-auditar.
+**Correccion del desplazamiento del suavizado.** Una media movil centrada
+corre el maximo hacia el lado donde la curva es mas suave. Con
+`refine_peak=True` (por omision) el dia se reajusta al maximo de la serie sin
+suavizar, dentro de un dia, lo que corrige en cualquiera de los dos sentidos.
+
+- En los cultivos sinteticos de `lactateshift.datasets`, donde el dia real se
+  conoce, el sesgo medio pasa de −0.93 a −0.21 dias y los aciertos exactos del
+  9.6% al 82.7% (400 cultivos, 10 semillas; detecta el 97.2% de los shifts y
+  no da falsos positivos). Con la semilla 1: de −0.91 a −0.18 dias, de 3/34
+  a 29/34 aciertos exactos.
+- En los datos reales el refinamiento mueve el dia en 40 de 101 cultivos:
+  31 hacia atras y 9 hacia adelante.
+
+Esas dos lineas cuentan algo incomodo. Los sinteticos tienen una subida que se
+aplana y una caida brusca, asi que ahi el suavizado corre el maximo hacia
+atras. En los cultivos reales pasa lo contrario con mas frecuencia: la caida
+suele ser mas lenta que la subida. **Los sinteticos reproducen la idea que el
+autor tenia de un cultivo, no la forma real**: sirven para verificar que el
+mecanismo hace lo que promete, no para describir cultivos. La validacion
+sintetica se reproduce con `python examples/validar_detector_sintetico.py`.
 
 ## El caso de estudio
 
@@ -135,40 +154,42 @@ python analysis/04_modelado.py               # regresion, Cox y controles
 python analysis/05_shap.py                   # interpretacion y sus limites
 python analysis/06_respuesta_auditoria.py    # experimentos de la auditoria externa
 python analysis/07_baseline_por_escala.py    # ¿aportan algo las variables por encima de la escala?
+python docs/verificar_readme.py              # cada cifra de este README contra las salidas
 ```
+
+Todas las cifras de esta seccion se guardan en `outputs/tablas/` y
+`docs/verificar_readme.py` comprueba que cada una aparezca aqui tal cual.
+Existe porque dos veces una cifra de este README quedo desactualizada sin que
+nadie lo notara.
 
 ### La pregunta que este trabajo responde, y la que no
 
 Con la definicion congelada, **101 de 106 cultivos hacen el shift**. Preguntar
-"lo hace o no" da 95 contra 5 y no tiene contenido: lo que varia es **cuando**,
-entre los dias 4 y 11. Por eso el problema se planteo como tiempo-a-evento.
+"lo hace o no" da 95 contra 5 y no tiene contenido: lo que varia es **cuando**.
+Por eso el problema se planteo como tiempo-a-evento.
 
 Ademas, 16 cultivos hacen el shift **dentro** de la ventana de observacion y se
 excluyen: no hay nada que anticipar cuando el desenlace ya esta en las propias
 variables. Eso deja **90 cultivos: 85 con evento y 5 censurados**.
 
-La consecuencia hay que decirla sin rodeos, porque cambia el alcance de todo lo
-demas: este trabajo **no** responde "se puede predecir el lactate shift en
-cultivos CHO". Responde una pregunta condicional:
+Este trabajo **no** responde "se puede predecir el lactate shift en cultivos
+CHO". Responde una pregunta condicional:
 
 > Dado un cultivo que **todavia no ha hecho el shift** al cerrar el dia 4,
-> .que dia lo hara?
+> ¿que dia lo hara?
 
-Los 16 cultivos excluidos no se predicen, y el modelo tampoco resuelve la
-decision previa de "ya ocurrio / aun no". Es una limitacion de alcance, no un
-detalle de redaccion.
+Los 16 cultivos excluidos no se predicen. Y hay una consecuencia operativa mas
+incomoda, senalada en auditoria externa: **saber que un cultivo pertenece a
+esa poblacion requiere informacion posterior al dia 4.** La propia regla
+necesita dias siguientes para confirmar que un descenso es sostenido. En una
+planta, aplicar este modelo exigiria primero un clasificador para esa
+decision, con sus propios errores. Tal como esta, la condicion de entrada es
+un oraculo retrospectivo.
 
-Y hay una consecuencia operativa mas incomoda, senalada en auditoria externa:
-**saber que un cultivo pertenece a esa poblacion requiere informacion
-posterior al dia 4.** La propia regla necesita dias siguientes para confirmar
-que un descenso es sostenido, asi que al cerrar el dia 4 no se puede
-determinar con certeza si el shift ya ocurrio. En una planta, aplicar este
-modelo exigiria primero un clasificador para esa decision, con sus propios
-errores. Tal como esta, la condicion de entrada es un oraculo retrospectivo.
-
-Dia del evento: mediana 6 (rango 5-11). La anticipacion efectiva sobre la
-ventana es de **2 dias en mediana**, y 20 de 85 eventos ocurren a un solo dia
-del cierre. Es poco, y decirlo cambia como se lee lo que sigue.
+Dia del evento: mediana 6, rango 5 a 11 (20 cultivos en el dia 5, 32 en el 6,
+22 en el 7, 6 en el 8, 4 en el 9 y 1 en el 11). La anticipacion efectiva
+sobre la ventana es de **2 dias en mediana**, y 20 de 85 eventos ocurren a un
+solo dia del cierre. Es poco, y decirlo cambia como se lee lo que sigue.
 
 ### Que salio
 
@@ -177,26 +198,38 @@ Prediccion del dia del evento, error absoluto medio en dias
 
 | Variables | Baseline (mediana) | Ridge | Random Forest |
 |---|---|---|---|
-| Nucleo (28) | 0.835 | 0.632 | **0.575** |
-| + glutamina y osmolalidad (36) | 0.835 | 0.667 | 0.581 |
+| Nucleo (28) | 0.835 | 0.613 | **0.571** |
+| + glutamina y osmolalidad (36) | 0.835 | 0.650 | 0.578 |
 | Solo la escala del reactor (control) | 0.835 | 0.928 | 0.795 |
 
-Prueba de permutacion (200 barajadas, seleccion de hiperparametro incluida
-dentro de cada barajada): MAE observado 0.643 contra un nulo de 0.935 ± 0.023,
-p < 0.005. La senal existe.
+Glutamina y osmolalidad no aportan: son las variables con mas datos faltantes
+en la ventana y las mas imputadas por los autores del dataset.
+
+Prueba de permutacion: se baraja el dia del evento y se repite todo el
+procedimiento, seleccion de hiperparametros incluida. El p-valor usa la
+correccion (k+1)/(n+1), asi que el menor valor posible depende del numero de
+barajadas.
+
+| Modelo | MAE observado | Nulo | p | Barajadas |
+|---|---|---|---|---|
+| Ridge | 0.625 | 0.934 ± 0.022 | 0.005 | 200 |
+| Random Forest | 0.607 | 0.974 ± 0.039 | 0.024 | 40 |
+
+En los dos casos el p es el minimo posible: ninguna barajada igualo al
+resultado real.
 
 Modelo de Cox sobre los 90 cultivos, aprovechando los censurados: c-index
-0.825, contra un nulo permutado de 0.485 ± 0.051 y un control de solo-escala
-de 0.542. **Es evidencia secundaria y debil**: 74 de los 85 eventos caen en
-tres dias (20 en el 5, 32 en el 6, 22 en el 7) y solo hay 5 censurados, asi
-que el c-index mide sobre todo la resolucion arbitraria de empates. No lo
-trates como confirmacion independiente del resultado de regresion.
+0.829, contra un nulo permutado de 0.485 ± 0.051 (p = 0.032, 30 barajadas) y
+un control de solo-escala de 0.542. **Es evidencia secundaria y debil**: 74 de
+los 85 eventos caen en tres dias y solo hay 5 censurados, asi que el c-index
+mide sobre todo la resolucion de empates. No es una confirmacion
+independiente del resultado de regresion.
 
-> **Sobre el 0.575.** Es la mejor de nueve combinaciones de modelo y conjunto
-> de variables, elegida despues de verlas todas. Sin una validacion cruzada
-> anidada, esa cifra es **exploratoria**, no una estimacion confirmatoria de
-> desempeno futuro. El contraste que si aguanta es el orden: los tres modelos
-> le ganan al baseline y el control de solo-escala no.
+> **Sobre el 0.571.** Es la mejor de nueve combinaciones de modelo y conjunto
+> de variables, elegida despues de verlas todas. Sin validacion cruzada
+> anidada es una cifra **exploratoria**, no una estimacion confirmatoria de
+> desempeno futuro. Lo que si aguanta es el orden: los dos modelos le ganan al
+> baseline con los dos conjuntos de variables, y el control de solo-escala no.
 
 ### El resultado negativo
 
@@ -204,24 +237,21 @@ Dejando fuera una escala de reactor completa y prediciendo sobre ella:
 
 | Escala excluida | n | Baseline | Ridge | Random Forest |
 |---|---|---|---|---|
-| 0.00202 | 43 | 1.023 | 0.967 | 1.075 |
-| 0.00181 | 18 | 0.778 | 1.344 | 1.609 |
-| 0.00000 | 16 | 0.438 | 0.526 | 0.466 |
-| **Ponderado** | | **0.844** | 0.964 | 1.073 |
+| 0.00202 | 43 | 1.023 | 0.947 | 1.074 |
+| 0.00181 | 18 | 0.778 | 1.375 | 1.552 |
+| 0.00000 | 16 | 0.438 | 0.505 | 0.466 |
+| **Ponderado** | | **0.844** | 0.955 | 1.059 |
 
-**Ningun modelo le gana al baseline en promedio ponderado**, y el Random
-Forest lo empeora en dos de las tres escalas. Ridge si le gana en una: en la
-escala de 43 cultivos obtiene 0.967 frente a 1.023 del baseline. Una version
-anterior de este README afirmaba que ningun modelo ganaba en ningun caso; era
-falso y lo corrigio una auditoria externa.
+**Ningun modelo le gana al baseline en promedio ponderado.** El Random Forest
+lo empeora en las tres escalas. Ridge le gana en una: en la escala de 43
+cultivos obtiene 0.947 frente a 1.023 del baseline.
 
-Con la precision que corresponde: son **tres** escalas (43, 18 y 16 cultivos),
-sin intervalos ni repeticion que midan la variabilidad de excluir una. Lo que
-los numeros permiten afirmar es que **en estas tres particiones el modelo no
-mostro transferencia**, no que no transfiera en general. Quitar `escala` de las
-variables no cambia el resultado (Random Forest 1.073 frente a 1.080), asi que
-la degradacion no viene de que el modelo conociera el volumen de la escala
-nueva.
+Son **tres** escalas (43, 18 y 16 cultivos), sin intervalos que midan la
+variabilidad de excluir una. Lo que los numeros permiten afirmar es que **en
+estas tres particiones el modelo no mostro transferencia**, no que no
+transfiera en general. Quitar `escala` de las variables no cambia el
+resultado (Random Forest 1.062 frente a 1.059), asi que la degradacion no
+viene de que el modelo conociera el volumen de la escala nueva.
 
 ### ¿Las variables aportan algo por encima de la escala?
 
@@ -231,17 +261,17 @@ de solo-escala ya mostraba que la escala predice por si sola, asi que
 "predecir la mediana global" era un rival demasiado debil.
 
 `analysis/07_baseline_por_escala.py` usa el rival fuerte — **predecir el dia
-mediano de la propia escala** — y reporta la incertidumbre con bootstrap sobre
-cultivos, que son la unidad independiente:
+mediano de la propia escala**, que por si solo erra 0.769 dias — y reporta la
+incertidumbre con bootstrap sobre cultivos, que son la unidad independiente:
 
 | Comparacion | Diferencia (dias) | IC 95% |
 |---|---|---|
-| Random Forest vs mediana global | +0.260 | [+0.100, +0.411] |
-| **Random Forest vs mediana de la escala** | **+0.194** | **[+0.051, +0.340]** |
-| Ridge vs mediana global | +0.203 | [+0.051, +0.351] |
-| Ridge vs mediana de la escala | +0.137 | [+0.000, +0.277] (en el limite) |
+| Random Forest vs mediana global | +0.265 | [+0.100, +0.423] |
+| **Random Forest vs mediana de la escala** | **+0.199** | **[+0.052, +0.349]** |
+| Ridge vs mediana global | +0.222 | [+0.066, +0.372] |
+| Ridge vs mediana de la escala | +0.156 | [+0.014, +0.298] |
 
-El Random Forest le gana al rival fuerte con un intervalo que no toca cero.
+Los dos modelos le ganan al rival fuerte con intervalos que no tocan cero.
 
 La prueba mas directa es trabajar **dentro de una sola escala**, donde el
 volumen es constante y no puede explicar nada. En la escala de 43 cultivos:
@@ -249,28 +279,29 @@ volumen es constante y no puede explicar nada. En la escala de 43 cultivos:
 | Dentro de una escala (n=43) | MAE (dias) |
 |---|---|
 | Mediana | 0.810 |
-| Ridge | 0.722 |
-| Random Forest | 0.712 |
+| Ridge | 0.736 |
+| Random Forest | 0.713 |
 
 Permutando el dia del evento dentro de esa misma escala, el nulo da
-0.966 ± 0.064 (p < 0.025, 40 barajadas). **Las variables de los dias 1-4
-contienen informacion sobre el dia del shift que la escala no explica.**
+0.963 ± 0.062 (p = 0.024, el minimo con 40 barajadas). **Las variables de los
+dias 1-4 contienen informacion sobre el dia del shift que la escala no
+explica.**
 
 De donde sale la ventaja:
 
 | Dia real | n | Error de la mediana de la escala | Error del Random Forest |
 |---|---|---|---|
-| 5 | 20 | 1.22 | **0.40** |
-| 6 | 32 | 0.49 | 0.55 |
-| 7 | 22 | 0.19 | 0.34 |
-| 8 | 6 | 1.20 | **0.75** |
-| 9 | 4 | 2.50 | **1.81** |
-| 11 | 1 | 4.00 | 4.06 |
+| 5 | 20 | 1.22 | **0.41** |
+| 6 | 32 | 0.49 | 0.56 |
+| 7 | 22 | 0.19 | 0.33 |
+| 8 | 6 | 1.20 | **0.71** |
+| 9 | 4 | 2.50 | **1.70** |
+| 11 | 1 | 4.00 | 3.99 |
 
-El modelo no mejora el caso tipico — en los dias 6 y 7 la mediana de la escala
-ya acierta, y el modelo erra un poco mas. Lo que hace es **distinguir a los
+El modelo no mejora el caso tipico: en los dias 6 y 7 la mediana de la escala
+ya acierta y el modelo erra un poco mas. Lo que hace es **distinguir a los
 cultivos que cambian antes o despues de lo habitual**, sobre todo los
-tempranos del dia 5, donde el error baja de 1.22 a 0.40 dias. Esa es la parte
+tempranos del dia 5, donde el error baja de 1.22 a 0.41 dias. Esa es la parte
 util de una prediccion temprana: detectar al que se sale del patron.
 
 **Como encaja con el leave-one-scale-out.** Las dos cosas son ciertas a la
@@ -286,158 +317,138 @@ confusion por linea celular o lote, que el dataset no permite controlar. Y es
 una sola escala; la de 18 y la de 16 cultivos son demasiado chicas para
 repetirla con potencia.
 
-(Una primera version de este script usaba el percentil de las diferencias por
-fold como intervalo. Eso mide cuanto varia un fold de ~17 cultivos, no la
-incertidumbre de la diferencia media, y daba un intervalo que cruzaba cero
-incluso contra la mediana global, donde la permutacion ya demostraba que el
-modelo gana. Se corrigio antes de reportar nada.)
-
 ### Que dice la interpretacion, y que no
 
 Los valores SHAP se calculan **fuera del fold de entrenamiento**: SHAP explica
 al modelo, y un modelo sobreajustado da explicaciones nitidas de su propio
-sobreajuste.
+sobreajuste. La importancia por SHAP y por permutacion ordenan las variables
+casi igual (correlacion de rangos 0.95).
 
-La direccion de los efectos es coherente con lo que se esperaria: mas biomasa
-y crecimiento mas rapido en los dias 1-4 adelantan el shift; un cociente
-lactato/glucosa alto tambien. Mas glutamato, amonio o pH lo retrasan.
+La direccion de los efectos: mas biomasa y crecimiento mas rapido en los dias
+1-4, y un lactato mas alto o que sube mas rapido, adelantan el shift. Mas
+glutamato, amonio o pH lo retrasan.
 
 Pero la magnitud engana, y el repositorio incluye las comprobaciones que lo
 demuestran.
 
 **Importancia no es necesidad.** El glutamato domina el ranking de SHAP
-(0.53 de |SHAP| sumado, contra 0.17 de la siguiente) y tambien encabeza la
-importancia por permutacion. Aun asi:
+(0.52 de |SHAP| sumado, contra 0.18 de la siguiente, la glucosa) y tambien
+encabeza la importancia por permutacion. Aun asi:
 
 | Conjunto | MAE (dias) |
 |---|---|
 | Baseline (mediana) | 0.835 |
-| Todas las variables | 0.575 |
-| Solo glutamato | 0.676 |
+| Todas las variables | 0.571 |
+| Solo glutamato | 0.667 |
 | Todas **sin** glutamato | 0.592 |
 
 Quitarlo casi no empeora nada. SHAP y la permutacion miden cuanto **usa** el
 modelo una variable, no cuanta informacion **unica** aporta: la del glutamato
 tambien esta en las demas, y el modelo la recupera de ahi.
 
-(La variable a ablacionar se eligio despues de ver los resultados de SHAP, lo
-cual sesga el experimento. Conviene notar hacia donde: ese sesgo favorece que
+(La variable a quitar se eligio despues de ver los resultados de SHAP, lo que
+sesga el experimento. Conviene notar hacia donde: ese sesgo favorece que
 quitarla empeore el modelo, y no empeora. La lectura es conservadora.)
 
-**Parte de la senal es la identidad del proceso, no fisiologia.** El grafico
-de dependencia del glutamato no muestra una relacion continua sino dos nubes
-separadas, lo que no parece una respuesta metabolica graduada. Partiendo la
-muestra por la mediana de esa variable, el 74% del grupo alto cae en una sola
-escala de reactor, y los dos grupos difieren en el dia del evento (mediana 7
-contra 6). Es decir, la variable esta funcionando en parte como marcador de a
-que familia de cultivos pertenece el lote.
+**Parte de la senal del glutamato es identidad del proceso.** Su grafico de
+dependencia no muestra una relacion continua sino dos nubes separadas.
+Partiendo la muestra por la mediana de esa variable, el 74% del grupo alto cae
+en una sola escala de reactor, y los dos grupos difieren en el dia del evento
+(mediana 7 contra 6). La variable funciona en parte como marcador de a que
+familia de cultivos pertenece el lote. Eso no contradice la prueba dentro de
+escala de la seccion anterior: el glutamato es la variable preferida del
+modelo, no la unica fuente de informacion.
 
-Eso encaja con el leave-one-scale-out: el modelo aprende el dia caracteristico
-de cada familia de procesos y por eso no transfiere a una escala nueva. La
-lectura honesta no es "el glutamato temprano controla el shift", sino "el
-glutamato temprano ayuda a identificar de que proceso viene el lote, y cada
-proceso tiene su momento tipico de shift".
+### Auditoria
 
-### Auditoria externa
+El codigo y el analisis se revisaron en varias rondas buscando errores.
 
-El codigo y el analisis se revisaron buscando errores.
+**Errores reales encontrados y corregidos:**
 
-Encontraron **tres errores reales**, todos corregidos:
-
-1. `<col>_n` contaba como medidos los dias rellenados hacia atras. Habia
-   incluso un test que afirmaba ese comportamiento, lo que lo volvia
-   permanente. La cuenta se hace ahora sobre la mascara previa al relleno.
+1. `<col>_n` contaba como medidos los dias rellenados. Habia un test que
+   afirmaba ese comportamiento.
 2. La prueba de permutacion congelaba un `alpha` de Ridge elegido con las
-   etiquetas reales. El sesgo iba a favor del resultado: con etiquetas
-   barajadas, `RidgeCV` elegiria mucha mas regularizacion y erraria menos, asi
-   que fijar un alpha pequeno inflaba el error nulo. Ahora el hiperparametro se
-   reajusta dentro de cada barajada.
-3. La agrupacion de variables para SHAP colapsaba lactato/glucosa y
-   lactato/VCD en una sola categoria, mezclando dos senales distintas.
+   etiquetas reales, lo que sesgaba el p-valor a favor del resultado.
+3. SHAP agrupaba lactato/glucosa y lactato/VCD en una sola categoria.
+4. El README afirmaba que ningun modelo le ganaba al baseline al cambiar de
+   escala; Ridge si le gana en una de las tres.
+5. Los experimentos de sensibilidad corrian con 27 variables en vez de 28.
+6. Una correlacion reportada (0.78) era de una corrida anterior.
+7. La permutacion solo cubria Ridge mientras se destacaba la cifra del Random
+   Forest.
+8. Las direcciones de SHAP se calculaban contra valores sin imputar.
+9. El baseline de mediana global era un rival demasiado debil (ver la
+   seccion anterior). Un primer intento de medir la incertidumbre contra el
+   rival fuerte usaba un intervalo mal construido y se corrigio antes de
+   reportarlo.
+10. La pendiente y el promedio de la ventana se calculaban incluyendo los dias
+    rellenados, que no son mediciones. Ahora usan solo los dias medidos.
+11. Los p-valores podian salir exactamente 0. Ahora usan (k+1)/(n+1).
+12. La explicacion de `refine_peak` suponia que el suavizado corre el maximo
+    hacia atras; en los datos reales lo corre mas a menudo hacia adelante.
 
-Una objecion resulto incorrecta al verificarla: la permutacion del modelo de
-Cox si mantiene unido el par (tiempo, evento), porque el mismo indice se aplica
-a las dos series.
+**Objeciones que resultaron incorrectas al verificarlas:** que la permutacion
+de Cox rompia el par (tiempo, evento), y que el detector no garantizaba un
+maximo local. La segunda se habia aceptado en la segunda ronda con una
+verificacion mal hecha — comparaba el dia ya refinado, no el punto detectado —
+y se retiro en la revision final. La opcion que se habia agregado para
+"corregirla" hacia que las mesetas no se detectaran nunca, y se elimino.
 
-Tres objeciones no tenian respuesta con el analisis existente y se convirtieron
-en los experimentos de `analysis/06_respuesta_auditoria.py`:
+**Experimentos que motivaron las auditorias** (`analysis/06_respuesta_auditoria.py`
+y `analysis/07_baseline_por_escala.py`):
 
-**.El modelo solo extrapola la curva de lactato que ya empezo?** Era la
-objecion mas fuerte: la etiqueta se construye de la trayectoria futura del
-lactato, y el lactato temprano esta entre las variables.
+*¿El modelo solo extrapola la curva de lactato que ya empezo?*
 
 | Conjunto | MAE (dias) |
 |---|---|
 | Baseline | 0.835 |
-| Todas (28 variables) | 0.575 |
-| Solo variables de lactato (6) | 0.692 |
-| **Sin ninguna variable de lactato (22)** | **0.594** |
+| Todas (28 variables) | 0.571 |
+| Solo variables de lactato (6) | 0.684 |
+| **Sin ninguna variable de lactato (22)** | **0.593** |
 
-Quitar todo el lactato deja el desempeno casi igual.
+El desempeno no depende de las variables explicitas de lactato. No demuestra
+que el modelo ignore la trayectoria del lactato: glucosa, VCD y amonio son
+proxies mecanicos de ella.
 
-La lectura precisa es estrecha: **el desempeno no depende de las variables
-explicitas de lactato**. No demuestra que el modelo ignore la trayectoria del
-lactato, porque glucosa, VCD y amonio son proxies mecanicos de ella — la
-glucosa es el sustrato, el VCD la biomasa que lo produce, el amonio se genera
-en el metabolismo que lo acompana. Refutar la objecion por completo exigiria
-un conjunto de variables independiente del estado glucolitico, que este
-dataset no permite construir.
-
-**.Las conclusiones dependen de la definicion del evento, que se ajusto
-mirando los datos?** Se rehizo el modelo completo con ocho definiciones
-alternativas, cada una comparada contra su propio baseline. La mejora es
-positiva en las ocho, entre 0.174 y 0.246 dias (mediana 0.236), incluida la
-variante sin la correccion del pico, que cambia el numero de cultivos
-excluidos de 16 a 6.
-
-Con la salvedad que corresponde: las ocho son variaciones de parametros de la
-**misma familia de regla** (suavizado, derivada, umbral relativo). Eso
-respalda decir que el resultado es estable ante esos parametros, no que sea
-robusto a una definicion estructuralmente distinta del evento — un metodo de
-punto de ruptura, o un umbral sobre la tasa de consumo, podrian dar otra cosa.
-Queda pendiente.
-
-**.El leave-one-scale-out mide transferencia real?** Repetido sin la variable
-`escala`: sin cambios relevantes (ver arriba).
+*¿Las conclusiones dependen de la definicion del evento?* Con ocho
+definiciones alternativas, cada una contra su propio baseline, la mejora es
+positiva en todas: entre 0.184 y 0.252 dias (mediana 0.237), incluida la
+variante sin `refine_peak`, que excluye 6 cultivos en vez de 16 (mejora
+0.239). Las ocho son variaciones de la **misma familia de regla**: respaldan
+estabilidad ante sus parametros, no robustez ante una definicion
+estructuralmente distinta.
 
 ## Limitaciones
 
 - **El alcance es condicional**: cultivos que no han hecho el shift al cerrar
-  el dia 4. Los 16 excluidos no se predicen, y determinar si un cultivo
-  pertenece a esa poblacion requiere informacion posterior al dia 4, asi que
-  la condicion de entrada es hoy un oraculo retrospectivo.
+  el dia 4. Los 16 excluidos no se predicen, y saber si un cultivo pertenece
+  a esa poblacion requiere informacion posterior al dia 4.
+- **La relacion no se traslada entre escalas** en las tres evaluadas.
+- **La senal dentro de escala se probo en una sola escala** (43 cultivos), y
+  dentro de ella puede haber confusion por linea celular o lote.
+- **El 0.571 es una cifra seleccionada** entre nueve combinaciones, sin
+  validacion cruzada anidada. Exploratoria, no confirmatoria.
 - **La regla no distingue un cambio de regimen permanente de una caida
   profunda reversible**, y sin `min_peak` no filtra por amplitud absoluta.
+- **Los datos sinteticos no reproducen la forma de los cultivos reales**:
+  validan el mecanismo del detector, no su adecuacion a cultivos reales.
 - **El experimento "sin lactato" no descarta los proxies** (glucosa, VCD,
   amonio) del mismo estado glucolitico.
 - **Las ocho definiciones alternativas pertenecen a la misma familia de
-  regla**: son sensibilidad de parametros, no robustez estructural.
-- **El 0.575 es una cifra seleccionada** entre nueve combinaciones, sin
-  validacion cruzada anidada. Exploratoria, no confirmatoria.
+  regla**: falta contrastar con un metodo estructuralmente distinto, como la
+  deteccion de puntos de cambio.
 - **La imputacion del dataset de origen no es causal.** Los autores rellenaron
-  huecos con interpolacion de Stineman mas SVR sobre series completas;
-  Stineman usa el punto anterior y el posterior. Un valor "del dia 3" puede
-  contener informacion del dia 10. Por eso todo el analisis parte de la hoja
-  sin rellenar, y la imputacion se hace aqui, hacia adelante y dentro de cada
-  fold.
-- **La senal dentro de escala se probo en una sola escala** (43 cultivos) y
-  dentro de ella puede haber confusion por linea celular o lote.
+  huecos con interpolacion de Stineman mas SVR sobre series completas, que usa
+  el punto posterior. Por eso todo el analisis parte de la hoja sin rellenar.
 - **No se puede agrupar la validacion por linea celular.** El dataset trae
-  linea celular y lote para 45 cultivos, pero sin llave a las series de tiempo.
-  Dos cultivos de la misma linea pueden caer uno en entrenamiento y otro en
-  prueba, asi que el desempeno reportado es probablemente optimista.
-- **Los datos vienen normalizados 0-1 por columna sobre todo el conjunto.** Esa
-  normalizacion ya uso todos los cultivos: hay una fuga leve e inevitable en el
-  dato de origen, que no se puede deshacer porque no hay unidades.
-- **El c-index de 0.825 convive con empates masivos** (32 eventos en el dia 6,
-  22 en el 7, 20 en el 5) y solo 5 censurados. Es calculable e informativo,
-  pero no soporta una interpretacion fuerte.
-- **Sin marcadores redox** (NAD+, piruvato) en el dataset, esto describe
-  senales de proceso, no mecanismo. Asociacion, no causalidad.
+  linea celular y lote para 45 cultivos, pero sin llave a las series de
+  tiempo. El desempeno reportado es probablemente optimista.
+- **Los datos vienen normalizados 0-1 por columna sobre todo el conjunto**:
+  una fuga leve e inevitable en el dato de origen.
+- **El c-index de Cox convive con empates masivos** y solo 5 censurados.
+- **Sin marcadores redox** (NAD+, piruvato): asociacion, no mecanismo.
 - **El muestreo esparso degrada la precision del dia.** Con 30% de dias
-  ausentes el error en el dia detectado puede llegar a 2 dias; el evento se
-  sigue detectando, el dia no es igual de confiable. Hay un test que lo
-  caracteriza.
+  ausentes el error en el dia detectado puede llegar a 2 dias.
 - El fenomeno esta muy estudiado y su mecanismo sigue en debate. Esto no es el
   primer trabajo que predice comportamiento de lactato en CHO; lo que aporta
   es una deteccion auditable y una validacion que incluye lo que no funciono.
@@ -448,12 +459,14 @@ Queda pendiente.
 pytest
 ```
 
-34 tests, ninguno depende del dataset con copyright: todo lo que verifican se
-construye en el momento. Cubren el caso del rebote tardio, dias faltantes,
-NaN internos, series demasiado cortas, parametros invalidos, el sesgo del
-suavizado y su correccion, que la cuenta de dias medidos no incluya los dias
-rellenados, y que las variables de la ventana temprana no cambien cuando se
-agregan dias posteriores.
+48 tests, ninguno depende del dataset con copyright: todo lo que
+verifican se construye en el momento. Cubren el rebote tardio, la caida
+profunda reversible, dias faltantes, NaN internos, entradas invalidas (dias
+repetidos, no enteros o en cero), la propiedad de maximo local, el
+refinamiento del pico en los dos sentidos, que la cuenta de dias medidos no
+incluya los rellenados, que la pendiente use solo mediciones reales, que las
+variables no cambien al agregar dias posteriores, y que los p-valores nunca
+sean cero.
 
 ## Cita del dataset
 

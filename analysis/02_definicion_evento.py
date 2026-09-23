@@ -26,7 +26,6 @@ Ejecutar:  python analysis/02_definicion_evento.py
 
 from itertools import product
 
-import numpy as np
 import pandas as pd
 
 from lactateshift import detect_shift_batch
@@ -88,6 +87,18 @@ def main() -> None:
     sens.to_csv(TABLAS / "sensibilidad_definicion.csv", index=False)
     print(sens.pivot_table(index=["suavizado", "dias_consec"], columns="umbral",
                            values="n_evento").to_string())
+
+    # Cuanto y hacia donde mueve el dia la correccion del suavizado en los
+    # datos reales. La explicacion original (el suavizado corre el maximo
+    # hacia atras) venia de los datos sinteticos y resulto no describir bien
+    # a los cultivos reales: aqui se mide en vez de suponerse.
+    sin_ref = etiquetar(raw, smooth_window=SUAVIZADO, n_consecutive=N_CONSEC,
+                        drop_threshold=UMBRAL, refine_peak=False)
+    ambos = et["occurred"] & sin_ref["occurred"]
+    mov = (et.loc[ambos, "day"] - sin_ref.loc[ambos, "day"]).value_counts().sort_index()
+    print("\n=== Efecto de refine_peak en los datos reales ===")
+    print("desplazamiento del dia (con - sin refinamiento):", mov.to_dict())
+    mov.rename_axis("desplazamiento").rename("cultivos").to_csv(TABLAS / "refine_real.csv")
 
     gap = cargar("Gap-Filled Data")
     et_gap = etiquetar(gap, smooth_window=SUAVIZADO, n_consecutive=N_CONSEC,

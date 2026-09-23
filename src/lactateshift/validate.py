@@ -30,9 +30,15 @@ def permutation_test(
     por azar un resultado como este? ``score_fn`` debe recibir una etiqueta y
     devolver el puntaje ya validado de forma cruzada.
 
+    El p-valor usa la correccion estandar (k + 1) / (n + 1), donde k es el
+    numero de barajadas al menos tan buenas como el resultado real. Sin el +1
+    el p-valor puede salir exactamente 0, lo que no es un p-valor valido: con
+    n barajadas, lo minimo que se puede afirmar es 1 / (n + 1).
+
     Returns
     -------
-    dict con ``observed``, ``null_mean``, ``null_sd`` y ``p_value`` empirico.
+    dict con ``observed``, ``null_mean``, ``null_sd``, ``p_value`` y
+    ``p_min`` (el menor p-valor alcanzable con ese numero de barajadas).
     """
     rng = np.random.default_rng(seed)
     observed = float(score_fn(y))
@@ -40,9 +46,11 @@ def permutation_test(
         float(score_fn(pd.Series(rng.permutation(y.to_numpy()), index=y.index)))
         for _ in range(n_permutations)
     ])
-    p = (nulls <= observed).mean() if lower_is_better else (nulls >= observed).mean()
+    k = int((nulls <= observed).sum() if lower_is_better else (nulls >= observed).sum())
     return {"observed": observed, "null_mean": float(nulls.mean()),
-            "null_sd": float(nulls.std()), "p_value": float(p),
+            "null_sd": float(nulls.std()),
+            "p_value": (k + 1) / (n_permutations + 1),
+            "p_min": 1 / (n_permutations + 1),
             "n_permutations": n_permutations}
 
 

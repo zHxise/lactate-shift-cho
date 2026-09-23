@@ -32,6 +32,7 @@ import warnings
 
 import numpy as np
 import pandas as pd
+from sklearn.base import clone
 from sklearn.dummy import DummyRegressor
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.impute import SimpleImputer
@@ -41,19 +42,18 @@ from sklearn.model_selection import RepeatedKFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from lactateshift import detect_shift_batch, early_window_features
+from lactateshift import detect_shift_batch
 from lactateshift.validate import leave_one_group_out
-from _comun import TABLAS, VENTANA, cargar
+from _comun import TABLAS, VENTANA, cargar, construir_variables
 
 warnings.filterwarnings("ignore")
 SEED = 0
 ALPHAS = np.logspace(-3, 3, 25)
-NUCLEO_COLS = ["[Lactate]", "[Glucose]", "VCD", "[NH3]", "pH", "[Glutamate]"]
 
 
 def pipe(m):
     return Pipeline([("imp", SimpleImputer(strategy="median")),
-                     ("esc", StandardScaler()), ("mod", m)])
+                     ("esc", StandardScaler()), ("mod", clone(m))])
 
 
 def mae_cv(m, X, y, n_rep=5, seed=SEED) -> tuple[float, float]:
@@ -112,6 +112,7 @@ def experimento_b(t, nucleo):
     con_ev = t[t["evento"]]
     y = con_ev["dia_evento"]
     sin_escala = [c for c in nucleo if c != "escala"]
+    filas = []
 
     for etiqueta, cols in [("con 'escala' entre las variables", nucleo),
                            ("SIN 'escala'", sin_escala)]:
@@ -124,6 +125,9 @@ def experimento_b(t, nucleo):
                                     mean_absolute_error, min_group_size=15)
             print(f"  {nombre:14s} MAE ponderado {d.attrs['weighted_mean']:.3f}   "
                   f"por escala: {[round(v,3) for v in d['score']]}")
+            filas.append({"variables": etiqueta, "modelo": nombre,
+                          "mae_ponderado": d.attrs["weighted_mean"]})
+    pd.DataFrame(filas).to_csv(TABLAS / "aud_b_loso_sin_escala.csv", index=False)
     print("\nNota: son solo tres escalas (43, 18 y 16 cultivos). Permite decir")
     print("que no transfiere ENTRE ESTAS TRES, no que no transfiera en general.")
 
@@ -134,19 +138,9 @@ def reconstruir(raw, **kw) -> tuple[pd.DataFrame, list[str], int]:
     et = detect_shift_batch(raw, id_col="cult", day_col="day",
                             value_col="[Lactate]", **kw)
     et["excluir"] = et["occurred"] & (et["day"] <= VENTANA)
-    X = early_window_features(raw, id_col="cult", day_col="day",
-                              value_cols=NUCLEO_COLS, window=VENTANA,
-                              ratios=[("[Lactate]", "[Glucose]"), ("[Lactate]", "VCD")],
-                              static_cols=["Culture Volume"])
-    X.columns = [c.replace("[", "").replace("]", "").replace("+", "")
-                  .replace("-", "").replace(" ", "_").lower() for c in X.columns]
-    X = X.rename(columns={"culture_volume": "escala"})
-    # vcd_crec_rel se construye a mano en 03_features.py y no sale de
-    # early_window_features. Omitirla aqui hacia que estos experimentos
-    # corrieran con 27 variables en vez de 28, y sus cifras no fueran
-    # comparables con el pipeline principal. Error de auditoria externa.
-    v = raw[raw["day"] <= VENTANA].sort_values("day").groupby("cult")["VCD"]
-    X["vcd_crec_rel"] = v.last() / v.first().replace(0, np.nan)
+    # Misma funcion que el pipeline principal (03). La version anterior
+    # duplicaba el codigo y olvidaba vcd_crec_rel.
+    X = construir_variables(raw, extendidas=False)
     tabla = X.join(et[["occurred", "day"]].rename(
         columns={"occurred": "evento", "day": "dia_evento"})).join(et[["excluir"]])
     n_excluidos = int(tabla["excluir"].sum())
