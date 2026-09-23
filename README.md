@@ -134,6 +134,7 @@ python analysis/03_features.py               # variables de los dias 1-4
 python analysis/04_modelado.py               # regresion, Cox y controles
 python analysis/05_shap.py                   # interpretacion y sus limites
 python analysis/06_respuesta_auditoria.py    # experimentos de la auditoria externa
+python analysis/07_baseline_por_escala.py    # ¿aportan algo las variables por encima de la escala?
 ```
 
 ### La pregunta que este trabajo responde, y la que no
@@ -221,6 +222,75 @@ mostro transferencia**, no que no transfiera en general. Quitar `escala` de las
 variables no cambia el resultado (Random Forest 1.073 frente a 1.080), asi que
 la degradacion no viene de que el modelo conociera el volumen de la escala
 nueva.
+
+### ¿Las variables aportan algo por encima de la escala?
+
+La objecion principal al resultado es que predecir el dia del shift podria
+ser lo mismo que *aprender a que escala pertenece el cultivo*. El control
+de solo-escala ya mostraba que la escala predice por si sola, asi que
+"predecir la mediana global" era un rival demasiado debil.
+
+`analysis/07_baseline_por_escala.py` usa el rival fuerte — **predecir el dia
+mediano de la propia escala** — y reporta la incertidumbre con bootstrap sobre
+cultivos, que son la unidad independiente:
+
+| Comparacion | Diferencia (dias) | IC 95% |
+|---|---|---|
+| Random Forest vs mediana global | +0.260 | [+0.100, +0.411] |
+| **Random Forest vs mediana de la escala** | **+0.194** | **[+0.051, +0.340]** |
+| Ridge vs mediana global | +0.203 | [+0.051, +0.351] |
+| Ridge vs mediana de la escala | +0.137 | [+0.000, +0.277] (en el limite) |
+
+El Random Forest le gana al rival fuerte con un intervalo que no toca cero.
+
+La prueba mas directa es trabajar **dentro de una sola escala**, donde el
+volumen es constante y no puede explicar nada. En la escala de 43 cultivos:
+
+| Dentro de una escala (n=43) | MAE (dias) |
+|---|---|
+| Mediana | 0.810 |
+| Ridge | 0.722 |
+| Random Forest | 0.712 |
+
+Permutando el dia del evento dentro de esa misma escala, el nulo da
+0.966 ± 0.064 (p < 0.025, 40 barajadas). **Las variables de los dias 1-4
+contienen informacion sobre el dia del shift que la escala no explica.**
+
+De donde sale la ventaja:
+
+| Dia real | n | Error de la mediana de la escala | Error del Random Forest |
+|---|---|---|---|
+| 5 | 20 | 1.22 | **0.40** |
+| 6 | 32 | 0.49 | 0.55 |
+| 7 | 22 | 0.19 | 0.34 |
+| 8 | 6 | 1.20 | **0.75** |
+| 9 | 4 | 2.50 | **1.81** |
+| 11 | 1 | 4.00 | 4.06 |
+
+El modelo no mejora el caso tipico — en los dias 6 y 7 la mediana de la escala
+ya acierta, y el modelo erra un poco mas. Lo que hace es **distinguir a los
+cultivos que cambian antes o despues de lo habitual**, sobre todo los
+tempranos del dia 5, donde el error baja de 1.22 a 0.40 dias. Esa es la parte
+util de una prediccion temprana: detectar al que se sale del patron.
+
+**Como encaja con el leave-one-scale-out.** Las dos cosas son ciertas a la
+vez: dentro de un contexto de proceso, las variables tempranas predicen el dia
+del shift mejor que la escala; entre contextos, la relacion no se traslada.
+La conclusion que sostienen los datos no es "el modelo solo aprende la escala"
+ni "hay una senal fisiologica universal", sino que **la relacion entre las
+variables tempranas y el dia del shift existe, pero es especifica de cada
+contexto de proceso**.
+
+Lo que esta prueba no resuelve: dentro de una escala todavia puede haber
+confusion por linea celular o lote, que el dataset no permite controlar. Y es
+una sola escala; la de 18 y la de 16 cultivos son demasiado chicas para
+repetirla con potencia.
+
+(Una primera version de este script usaba el percentil de las diferencias por
+fold como intervalo. Eso mide cuanto varia un fold de ~17 cultivos, no la
+incertidumbre de la diferencia media, y daba un intervalo que cruzaba cero
+incluso contra la mediana global, donde la permutacion ya demostraba que el
+modelo gana. Se corrigio antes de reportar nada.)
 
 ### Que dice la interpretacion, y que no
 
@@ -350,6 +420,8 @@ Queda pendiente.
   contener informacion del dia 10. Por eso todo el analisis parte de la hoja
   sin rellenar, y la imputacion se hace aqui, hacia adelante y dentro de cada
   fold.
+- **La senal dentro de escala se probo en una sola escala** (43 cultivos) y
+  dentro de ella puede haber confusion por linea celular o lote.
 - **No se puede agrupar la validacion por linea celular.** El dataset trae
   linea celular y lote para 45 cultivos, pero sin llave a las series de tiempo.
   Dos cultivos de la misma linea pueden caer uno en entrenamiento y otro en
