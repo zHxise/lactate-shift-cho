@@ -64,7 +64,15 @@ def main() -> int:
     print(f"Tabla guardada en {salida}")
 
     if not a.sin_figuras:
-        import matplotlib
+        # matplotlib no es dependencia del paquete (solo numpy y pandas). Si no
+        # esta instalado, la tabla ya se guardo: se avisa en vez de fallar.
+        try:
+            import matplotlib
+        except ImportError:
+            print("\nPara las figuras falta matplotlib. Instalalo con:\n"
+                  "    pip install matplotlib\n"
+                  "o corre el script con --sin-figuras.")
+            return 0
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         carpeta = a.csv.with_name(a.csv.stem + "_figuras")

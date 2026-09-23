@@ -65,6 +65,7 @@ Para probarlo con **tus propios datos**, guarda un CSV con columnas
 y corre:
 
 ```bash
+pip install matplotlib          # solo para las figuras
 python examples/detectar_en_mi_csv.py examples/ejemplo_cultivos.csv
 ```
 
@@ -483,7 +484,7 @@ estructuralmente distinta.
 pytest
 ```
 
-52 tests, ninguno depende del dataset con copyright: todo lo que
+54 tests, ninguno depende del dataset con copyright: todo lo que
 verifican se construye en el momento. Cubren el rebote tardio, la caida
 profunda reversible, dias faltantes, NaN internos, entradas invalidas (dias
 repetidos, no enteros o en cero), la propiedad de maximo local, el
