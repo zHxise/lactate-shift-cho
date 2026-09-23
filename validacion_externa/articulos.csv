@@ -1,1 +1,7 @@
 articulo,referencia,doi,acceso,incluido,motivo
+becker2019,"Becker et al. 2019, Front. Bioeng. Biotechnol. 7:76",10.3389/fbioe.2019.00076,abierto (CC BY),pendiente,"autores declaran el cambio a consumo en una condicion (intervalo amplio) y acumulacion continua en otras dos; falta obtener la figura"
+lularevic2019,"Lularevic 2019, tesis EngD, UCL",https://discovery.ucl.ac.uk/id/eprint/10097093,abierto,pendiente,"autores definen ventanas de produccion y consumo por tipo de cultivo; falta la figura; verificar que sus datos industriales no sean los mismos del caso de estudio (independencia)"
+brunner2018,"Brunner et al. 2018, Eng. Life Sci. 18:204",10.1002/elsc.201700131,abierto,pendiente,"titulo trata directamente el shift; falta descargar el PDF"
+pmc12259514,"Impacto de OD, agitacion, aireacion y cobre sobre el metabolismo del lactato en fed-batch CHO (PMC12259514)",PMC12259514,abierto,pendiente,"falta descargar el PDF"
+metabeng2024,"Deciphering molecular drivers of lactate metabolic shift in mammalian cell cultures, Metab. Eng. 2024",S1096717624001642,abierto (CC BY),no,"los autores describen las fases solo de forma cualitativa; no declaran un dia por cultivo"
+scirep2017,"A Systematic Approach to Time-series Metabolite Profiling and RNA-seq Analysis of CHO Cell Culture, Sci. Rep. 7:43518",10.1038/srep43518,abierto (CC BY),no,"cultivo batch de 0 a 5 dias; no llega al shift ni lo declaran"

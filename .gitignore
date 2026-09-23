@@ -25,3 +25,7 @@ outputs/figuras/*
 # salidas de examples/detectar_en_mi_csv.py
 examples/*_shift.csv
 examples/*_figuras/
+
+# fuentes de la validacion externa (PDF de articulos con copyright)
+validacion_externa/fuentes/*
+!validacion_externa/fuentes/LEEME.txt
