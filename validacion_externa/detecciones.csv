@@ -1,0 +1,10 @@
+articulo,curva,n_puntos,hubo_shift,dia_detectado,motivo
+becker2019,NOB,14,False,,sin descenso sostenido suficiente
+becker2019,COP,8,False,,sin descenso sostenido suficiente
+becker2019,REF,8,False,,sin descenso sostenido suficiente
+yin2025,vvm_bajo,15,False,,sin descenso sostenido suficiente
+yin2025,vvm_alto,15,False,,sin descenso sostenido suficiente
+lularevic2019,CY01,9,True,4.0,shift
+lularevic2019,3C12,11,True,5.0,shift
+lularevic2019,R33A,11,True,5.0,shift
+lularevic2019,EB7,11,True,5.0,shift
