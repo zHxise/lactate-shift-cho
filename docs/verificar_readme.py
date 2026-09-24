@@ -227,6 +227,39 @@ def cifras() -> list[tuple[str, str]]:
         ("variante sin refine", f"excluye {int(sinref.excluidos)} cultivos en vez de 16 (mejora\n{f3(sinref.mejora)})"),
     ]
 
+    # --- validacion externa (validacion_externa/, archivos versionados)
+    ve = RAIZ / "validacion_externa"
+    r = pd.read_csv(ve / "resultado.csv")
+    ex = pd.read_csv(ve / "exploratorio.csv")
+    from scipy.stats import beta
+    k, n = int(r["acierto"].sum()), len(r)
+    lo = beta.ppf(0.025, k, n - k + 1) if k else 0.0
+    hi = beta.ppf(0.975, k + 1, n - k) if k < n else 1.0
+    por = r.groupby("definicion")["acierto"].agg(["sum", "count"])
+    pico = r[r["definicion"] == "pico"]
+    assert (pico["diferencia"] == 0).all(), "algun 'pico' no fue exacto: revisar la tabla"
+    fallos = ex[~ex["acierto"]].sort_values("caida_suavizada")
+    c += [
+        ("validacion externa: curvas y fuentes",
+         f"Se probo con {n} curvas de {r['articulo'].nunique()} fuentes"),
+        ("validacion externa: resultado",
+         f"**Resultado: {k} de {n} aciertos ({k / n:.0%}, IC 95% {lo * 100:.0f}-{hi * 100:.0f}%)"),
+        ("validacion externa: pico",
+         f"| El dia del maximo | {por.loc['pico', 'count']} | {por.loc['pico', 'sum']}, todos en el dia exacto |"),
+        ("validacion externa: sin shift",
+         f"| Que no hubo shift | {por.loc['no_aplica', 'count']} | {por.loc['no_aplica', 'sum']} |"),
+        ("validacion externa: inicio del consumo",
+         f"| El inicio del consumo, con una caida suave | {por.loc['inicio_consumo', 'count']} | "
+         f"{por.loc['inicio_consumo', 'sum']} |"),
+        ("validacion externa: caidas de los fallos",
+         f"({fallos['caida_suavizada'].iloc[0]:.0%} en una curva y "
+         f"{fallos['caida_suavizada'].iloc[1]:.0%} en la otra"),
+        ("limitacion: shifts suaves",
+         f"fallo\n  en las {len(fallos)} curvas donde el lactato bajo menos del 30%"),
+        ("limitacion: censurados",
+         f"los {len(mod) - len(ev)} cultivos censurados pueden incluir"),
+    ]
+
     # --- tests
     out = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q"],
                          cwd=RAIZ, capture_output=True, text=True,

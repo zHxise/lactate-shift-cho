@@ -1,0 +1,10 @@
+articulo,curva,caida_cruda,caida_suavizada,desde_dia,hasta_dia,ultimo_dia,definicion,acierto
+becker2019,NOB,0.193,0.16,5.0,10.0,13.0,inicio_consumo,False
+becker2019,COP,0.0,0.0,,,13.0,no_aplica,True
+becker2019,REF,0.0,0.0,,,13.0,no_aplica,True
+yin2025,vvm_bajo,0.039,0.0,10.0,12.0,14.0,no_aplica,True
+yin2025,vvm_alto,0.32,0.252,10.0,14.0,14.0,inicio_consumo,False
+lularevic2019,CY01,0.764,0.527,4.0,8.0,8.0,pico,True
+lularevic2019,3C12,0.858,0.835,5.0,8.0,10.0,pico,True
+lularevic2019,R33A,0.825,0.671,5.0,10.0,10.0,pico,True
+lularevic2019,EB7,1.0,1.0,2.0,8.0,10.0,pico,True

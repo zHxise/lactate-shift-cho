@@ -161,6 +161,36 @@ autor tenia de un cultivo, no la forma real**: sirven para verificar que el
 mecanismo hace lo que promete, no para describir cultivos. La validacion
 sintetica se reproduce con `python examples/validar_detector_sintetico.py`.
 
+## Validacion externa del detector
+
+¿El detector encuentra el mismo dia que declaran los autores de articulos
+publicados? Se probo con 9 curvas de 3 fuentes ajenas al dataset del caso de
+estudio (Becker et al. 2019, Yin et al. 2025 y la tesis de Lularevic 2019),
+con un protocolo fijado en git antes de buscar datos
+(`validacion_externa/PROTOCOLO.md`): detector congelado por su huella,
+criterio de exito de al menos 80% de aciertos con tolerancia de un dia, y
+commits separados para las curvas, las detecciones y las respuestas de los
+autores.
+
+**Resultado: 7 de 9 aciertos (78%, IC 95% 40-97%). No cumple el criterio
+fijado de antemano.**
+
+| Lo que declaran los autores | Curvas | Aciertos |
+|---|---|---|
+| El dia del maximo | 4 | 4, todos en el dia exacto |
+| Que no hubo shift | 3 | 3 |
+| El inicio del consumo, con una caida suave | 2 | 0 |
+
+Los dos fallos tienen la misma causa: el lactato bajo, pero menos del 30% que
+exige la regla (16% en una curva y 25% en la otra, en la serie suavizada). El
+detector es conservador: marca los shifts claros en el dia correcto y no marca
+los suaves. No se cambio ningun parametro despues de ver esto.
+
+Con 9 curvas el intervalo es ancho, cuatro de ellas vienen de la misma tesis,
+y la extraccion no fue ciega: hubo que leer el texto de los autores para saber
+si el articulo cumplia los criterios. Detalle, citas y desviaciones en
+`validacion_externa/RESULTADO.md`.
+
 ## El caso de estudio
 
 Dataset: 106 cultivos CHO de 5 a 500 L, 9 a 18 dias, 24 variables de proceso
@@ -455,6 +485,9 @@ estructuralmente distinta.
   validacion cruzada anidada. Exploratoria, no confirmatoria.
 - **La regla no distingue un cambio de regimen permanente de una caida
   profunda reversible**, y sin `min_peak` no filtra por amplitud absoluta.
+- **El detector no marca los shifts suaves.** En la validacion externa fallo
+  en las 2 curvas donde el lactato bajo menos del 30%. En el caso de estudio,
+  los 5 cultivos censurados pueden incluir shifts de ese tipo.
 - **Los datos sinteticos no reproducen la forma de los cultivos reales**:
   validan el mecanismo del detector, no su adecuacion a cultivos reales.
 - **El experimento "sin lactato" no descarta los proxies** (glucosa, VCD,
