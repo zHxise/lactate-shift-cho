@@ -25,7 +25,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from lactateshift import detect_shift_batch
+from lactateshift import detect_shift_batch, isolated_low_points
 from lactateshift.detect import regularize, smooth
 
 COLUMNAS = {"culture", "day", "lactate"}
@@ -108,6 +108,19 @@ def main() -> int:
         # en el mensaje; no hace falta la traza completa para corregirlos
         print(f"Problema con los datos: {e}")
         return 1
+
+    # Un solo punto muy bajo, sobre todo cerca del final, puede crear un shift
+    # falso (la media de 3 dias no lo anula en el borde). No se corrige: se
+    # avisa, porque decidir si es un error le toca a quien hizo el experimento.
+    aislados = {c: isolated_low_points(g["day"], g["lactate"])
+                for c, g in datos.groupby("culture")}
+    aislados = {c: d for c, d in aislados.items() if d}
+    if aislados:
+        detalle = "; ".join(f"{c} (dia {', '.join(f'{x:.0f}' for x in d)})"
+                            for c, d in sorted(aislados.items(), key=lambda kv: _orden_natural(kv[0])))
+        print(f"Aviso: medicion muy baja y aislada en {detalle}. Si es un error de "
+              "medicion, el resultado de ese cultivo puede estar mal: un solo punto asi "
+              "puede crear un shift falso. Revisa su figura.\n")
 
     tabla = r[["occurred", "day", "time", "drop_fraction", "reason"]].rename(columns={
         "occurred": "hubo_shift", "day": "dia_shift", "time": "tiempo",

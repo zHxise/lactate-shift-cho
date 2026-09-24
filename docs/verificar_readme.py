@@ -260,6 +260,14 @@ def cifras() -> list[tuple[str, str]]:
          f"los {len(mod) - len(ev)} cultivos censurados pueden incluir"),
     ]
 
+    # --- puntos bajos aislados (analysis/08_puntos_aislados.py)
+    pa = leer("puntos_aislados.csv")
+    k_pa = int(pa["cambia"].sum())
+    efecto = ("quitarlo no cambia el resultado de ninguno" if k_pa == 0
+              else f"quitarlo cambia el resultado de {k_pa}")
+    c.append(("puntos aislados",
+              f"{len(pa)} de {len(et)} cultivos\n  tienen un punto bajo aislado y {efecto}"))
+
     # --- tests
     out = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q"],
                          cwd=RAIZ, capture_output=True, text=True,

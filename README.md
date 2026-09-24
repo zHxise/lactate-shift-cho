@@ -74,7 +74,8 @@ la curva y el dia marcado. `examples/ejemplo_cultivos.csv` trae cultivos
 sinteticos para ver el formato. Acepta tambien el CSV que guarda Excel en
 espanol (punto y coma y coma decimal), y si el archivo tiene un problema
 (una letra en lugar de un numero, dias repetidos, columnas con otro nombre)
-dice cual y en que fila.
+dice cual y en que fila. Tambien avisa si un cultivo tiene una medicion muy
+baja y aislada, que podria crear un shift falso (ver Limitaciones).
 
 Variables predictoras de una ventana temprana:
 
@@ -212,6 +213,7 @@ python analysis/04_modelado.py               # regresion, Cox y controles
 python analysis/05_shap.py                   # interpretacion y sus limites
 python analysis/06_respuesta_auditoria.py    # experimentos de la auditoria externa
 python analysis/07_baseline_por_escala.py    # ¿aportan algo las variables por encima de la escala?
+python analysis/08_puntos_aislados.py        # ¿alguna etiqueta depende de un error de medicion?
 python docs/verificar_readme.py              # cada cifra de este README contra las salidas
 ```
 
@@ -488,6 +490,13 @@ estructuralmente distinta.
   validacion cruzada anidada. Exploratoria, no confirmatoria.
 - **La regla no distingue un cambio de regimen permanente de una caida
   profunda reversible**, y sin `min_peak` no filtra por amplitud absoluta.
+- **Un solo punto muy bajo cerca del final puede crear un shift falso.** La
+  media de 3 dias no lo anula en el borde de la serie. Lo encontro una prueba
+  con datos inventados (una meseta con un 0.7 entre 3.2 y 4.3). En el caso de
+  estudio se reviso con `analysis/08_puntos_aislados.py`: 16 de 106 cultivos
+  tienen un punto bajo aislado y quitarlo no cambia el resultado de ninguno.
+  `lactateshift.isolated_low_points` y el script del CSV senalan esos puntos
+  para revisarlos; el detector no se modifico.
 - **El detector no marca los shifts suaves.** En la validacion externa fallo
   en las 2 curvas donde el lactato bajo menos del 30%. En el caso de estudio,
   los 5 cultivos censurados pueden incluir shifts de ese tipo.
@@ -520,7 +529,7 @@ estructuralmente distinta.
 pytest
 ```
 
-58 tests, ninguno depende del dataset con copyright: todo lo que
+63 tests, ninguno depende del dataset con copyright: todo lo que
 verifican se construye en el momento. Cubren el rebote tardio, la caida
 profunda reversible, dias faltantes, NaN internos, entradas invalidas (dias
 repetidos, no enteros o en cero), la propiedad de maximo local, el
@@ -529,7 +538,8 @@ incluya los rellenados, que la pendiente use solo mediciones reales, que las
 variables no cambien al agregar dias posteriores, que los p-valores nunca
 sean cero, que los ejemplos de codigo de este README corran tal cual, y que
 el script del CSV explique en espanol lo que esta mal en un archivo en vez de
-fallar con una traza.
+fallar con una traza, y que los puntos bajos aislados se senalen sin confundir
+una bajada real ni el ruido cerca de cero.
 
 ## Cita del dataset
 
