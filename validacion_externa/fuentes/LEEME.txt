@@ -1,1 +1,14 @@
-Aqui van los PDF o figuras de los articulos. No se suben a git (pueden tener copyright).
+Aqui van los PDF de los articulos. No se suben a git (tienen copyright).
+Para reproducir curvas.csv con digitalizar.py, guardalos con estos nombres:
+
+  becker2019.pdf     https://doi.org/10.3389/fbioe.2019.00076
+  lularevic2019.pdf  https://discovery.ucl.ac.uk/id/eprint/10097093
+  yin2025.pdf        https://doi.org/10.1007/s10616-025-00816-5
+
+SHA-256 de las copias usadas:
+  becker2019.pdf     d9d529b1a5c82137a2303ea9ec1851e5f5b8030122861f54de538906fdfcdbf2
+  lularevic2019.pdf  f8dbe826f4237af208f0c1a9c357f377309b01f7a9e0f6ceb306a870351e64ee
+  yin2025.pdf        3510538902f6914f03aa3efdaeb0769c571171f56148cb97cd8ad6ff064b601d
+
+digitalizar.py --control guarda aqui tambien las figuras de control
+(control_*.png): los puntos extraidos dibujados sobre la figura original.
