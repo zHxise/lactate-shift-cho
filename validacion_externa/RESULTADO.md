@@ -21,7 +21,17 @@ antemano (80%).**
 | Becker 2019 | NOB | pasa a consumo entre los dias 6 y 10 | sin shift | **no** |
 | Yin 2025 | vvm alta | pasa a consumo en la fase de dias 7-14 | sin shift | **no** |
 
-Las citas textuales y su ubicacion estan en `respuestas.csv`.
+Las citas textuales y su ubicacion estan en `respuestas.csv`. **Verificadas**
+el 2026-09-24 por Braulio Rodriguez contra las paginas originales (Becker p. 5,
+Yin pp. 5-6, Lularevic p. 109): las siete frases aparecen tal cual y se
+refieren a las curvas asignadas. En la verificacion se agrego a las citas de
+Lularevic la frase anterior del mismo parrafo ("All four experiments showed a
+shift in lactate metabolism"), que hace explicito que el maximo es el shift;
+no cambia ningun dia ni resultado.
+
+Detalle menor: Lularevic escribe que los maximos del fed-batch van de 20 a
+42 mM, pero en su figura van de 19 a 38 mM (EB7, 3C12). El dia coincide; el
+rango de concentraciones del texto es aproximado.
 
 ## Por que fallo donde fallo
 
@@ -36,7 +46,9 @@ Las dos curvas falladas son las unicas donde los autores declaran el
   consuman.
 - Yin vvm alta: baja 32% del dia 10 al 14, pero el cultivo termina a media
   bajada y la media movil del ultimo dia solo promedia dos puntos, asi que en
-  la serie suavizada la caida queda en 25%.
+  la serie suavizada la caida queda en 25%. Los autores se apoyan tambien en
+  la tasa especifica de produccion de lactato de los dias 7-14 (su Fig. 2f),
+  que es negativa con vvm alta.
 
 En las cuatro curvas donde los autores declaran el **maximo**, las caidas son
 de 53% a 100% (suavizadas) y el detector da el mismo dia exacto.
