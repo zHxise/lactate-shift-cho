@@ -303,7 +303,8 @@ def figuras_control(filas: list[dict]) -> None:
         for curva, (xs, ys) in puntos.items():
             ax.scatter(xs, ys, s=70, facecolors="none", edgecolors=colores[curva],
                        linewidths=1.6, label=curva)
-        ax.legend(loc="lower right")
+        # fuera de la grafica, para que no tape ningun punto
+        ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1), borderaxespad=0)
         ax.set_title(titulo)
         ax.axis("off")
         fig.savefig(FUENTES / nombre, dpi=130, bbox_inches="tight")
