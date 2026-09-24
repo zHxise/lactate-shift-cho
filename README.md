@@ -71,7 +71,10 @@ python examples/detectar_en_mi_csv.py examples/ejemplo_cultivos.csv
 
 Imprime el dia del shift de cada cultivo y guarda una figura por cultivo con
 la curva y el dia marcado. `examples/ejemplo_cultivos.csv` trae cultivos
-sinteticos para ver el formato.
+sinteticos para ver el formato. Acepta tambien el CSV que guarda Excel en
+espanol (punto y coma y coma decimal), y si el archivo tiene un problema
+(una letra en lugar de un numero, dias repetidos, columnas con otro nombre)
+dice cual y en que fila.
 
 Variables predictoras de una ventana temprana:
 
@@ -517,14 +520,16 @@ estructuralmente distinta.
 pytest
 ```
 
-54 tests, ninguno depende del dataset con copyright: todo lo que
+58 tests, ninguno depende del dataset con copyright: todo lo que
 verifican se construye en el momento. Cubren el rebote tardio, la caida
 profunda reversible, dias faltantes, NaN internos, entradas invalidas (dias
 repetidos, no enteros o en cero), la propiedad de maximo local, el
 refinamiento del pico en los dos sentidos, que la cuenta de dias medidos no
 incluya los rellenados, que la pendiente use solo mediciones reales, que las
 variables no cambien al agregar dias posteriores, que los p-valores nunca
-sean cero, y que los ejemplos de codigo de este README corran tal cual.
+sean cero, que los ejemplos de codigo de este README corran tal cual, y que
+el script del CSV explique en espanol lo que esta mal en un archivo en vez de
+fallar con una traza.
 
 ## Cita del dataset
 

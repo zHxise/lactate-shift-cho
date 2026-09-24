@@ -11,9 +11,15 @@ Uso:
 
 Salidas: una tabla en pantalla y en <archivo>_shift.csv, y una figura por
 cultivo en la carpeta <archivo>_figuras/.
+
+Acepta tambien el CSV que guarda Excel en espanol (punto y coma entre
+columnas y coma decimal). Los nombres de columna no distinguen mayusculas.
 """
 
+from __future__ import annotations
+
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -23,6 +29,50 @@ from lactateshift import detect_shift_batch
 from lactateshift.detect import regularize, smooth
 
 COLUMNAS = {"culture", "day", "lactate"}
+
+
+def leer_csv(ruta: Path) -> pd.DataFrame:
+    """Lee el CSV. Si el encabezado viene separado por punto y coma, como lo
+    guarda Excel en espanol, se lee con ese separador y coma decimal."""
+    with open(ruta, encoding="utf-8-sig") as f:
+        encabezado = f.readline()
+    if ";" in encabezado and "," not in encabezado:
+        datos = pd.read_csv(ruta, sep=";", decimal=",", encoding="utf-8-sig")
+        print("Nota: el archivo usa punto y coma y coma decimal (formato de Excel "
+              "en espanol); se leyo asi.\n")
+    else:
+        datos = pd.read_csv(ruta, encoding="utf-8-sig")
+    datos.columns = [str(c).strip().lower() for c in datos.columns]
+    return datos
+
+
+def revisar(datos: pd.DataFrame) -> str | None:
+    """Devuelve un mensaje en espanol si los datos no se pueden usar, o None.
+
+    Los problemas de forma de cada serie (dias repetidos, no enteros, que no
+    empiezan en 1) los revisa el propio detector; aqui van los del archivo."""
+    faltan = COLUMNAS - set(datos.columns)
+    if faltan:
+        return (f"Al CSV le faltan columnas: {sorted(faltan)}. Necesita {sorted(COLUMNAS)}; "
+                f"encontre {list(datos.columns)}.")
+    if datos.empty:
+        return "El CSV no tiene datos: solo trae el encabezado."
+    for col in ("day", "lactate"):
+        num = pd.to_numeric(datos[col], errors="coerce")
+        malos = datos.index[num.isna() & datos[col].notna()]
+        if len(malos):
+            i = malos[0]
+            return (f"En la columna {col}, fila {i + 2} del archivo: "
+                    f"'{datos.at[i, col]}' no es un numero.")
+        datos[col] = num
+    if datos["day"].isna().any():
+        return f"La fila {datos.index[datos['day'].isna()][0] + 2} del archivo no tiene dia."
+    return None
+
+
+def _orden_natural(s) -> list:
+    # C2 antes que C10, como lo leeria una persona
+    return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", str(s))]
 
 
 def main() -> int:
@@ -37,11 +87,17 @@ def main() -> int:
     if not a.csv.exists():
         print(f"No existe el archivo {a.csv}")
         return 1
-    datos = pd.read_csv(a.csv)
-    faltan = COLUMNAS - set(datos.columns)
-    if faltan:
-        print(f"Al CSV le faltan columnas: {sorted(faltan)}. Necesita {sorted(COLUMNAS)}.")
+    datos = leer_csv(a.csv)
+    problema = revisar(datos)
+    if problema:
+        print(problema)
         return 1
+    negativos = sorted(datos.loc[datos["lactate"] < 0, "culture"].astype(str).unique())
+    if negativos:
+        # no se rechaza (puede haber datos centrados o con linea base restada),
+        # pero una concentracion negativa casi siempre es un error de captura
+        print(f"Aviso: hay lactato negativo en {', '.join(negativos)}. Una concentracion "
+              "no puede ser negativa; revisa esos datos.\n")
 
     try:
         r = detect_shift_batch(datos, id_col="culture", day_col="day", value_col="lactate",
@@ -56,6 +112,10 @@ def main() -> int:
     tabla = r[["occurred", "day", "time", "drop_fraction", "reason"]].rename(columns={
         "occurred": "hubo_shift", "day": "dia_shift", "time": "tiempo",
         "drop_fraction": "caida_relativa", "reason": "motivo"})
+    for col in ("dia_shift", "caida_relativa"):
+        # sin ningun shift la columna llega como None; se muestra como NaN
+        tabla[col] = pd.to_numeric(tabla[col])
+    tabla = tabla.loc[sorted(tabla.index, key=_orden_natural)]
     print(tabla.round(3).to_string())
     n = int(tabla["hubo_shift"].sum())
     print(f"\n{n} de {len(tabla)} cultivos con shift detectado.")
