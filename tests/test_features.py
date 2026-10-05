@@ -1,5 +1,4 @@
-"""Tests de la construccion de variables. El punto central: que nada de lo
-que se calcula dependa de informacion posterior a la ventana."""
+"""Tests de la construccion de variables de la ventana temprana."""
 
 import numpy as np
 import pandas as pd
@@ -42,8 +41,7 @@ class TestSinFuga:
         pd.testing.assert_frame_equal(fc, fl)
 
     def test_hueco_hereda_del_dia_anterior_no_del_posterior(self):
-        # los dias 3 y 4 faltan y el 5 existe: el ultimo valor debe venir del
-        # dia 2, jamas del dia 5
+        # faltan los dias 3 y 4: el ultimo valor debe ser el del dia 2
         df = pd.DataFrame({"culture": "A", "day": [1, 2, 5],
                            "lactate": [1.0, 2.0, 99.0]})
         f = early_window_features(df, id_col="culture", day_col="day",
@@ -80,13 +78,7 @@ class TestSinFuga:
 
 class TestVariables:
     def test_cuenta_dias_medidos_no_dias_rellenados(self):
-        """La cuenta es de mediciones reales, no de celdas con valor.
-
-        Este test existe por un error encontrado en auditoria externa: la
-        cuenta se hacia despues del ffill, asi que los dias heredados se
-        contaban como medidos y la variable decia algo distinto de lo que
-        documentaba.
-        """
+        """_n cuenta mediciones reales, no dias rellenados con ffill."""
         df = pd.DataFrame({"culture": "A", "day": [1, 3], "lactate": [1.0, 3.0]})
         f = early_window_features(df, id_col="culture", day_col="day",
                                   value_cols=["lactate"], window=4)

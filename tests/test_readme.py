@@ -1,9 +1,4 @@
-"""Ejecuta los bloques de codigo Python del README.
-
-Existe porque un ejemplo del README usaba una variable que nunca definia y
-fallaba al copiarlo. Se detecto al probar el repositorio como un usuario
-nuevo, no con los demas tests.
-"""
+"""Ejecuta los bloques de codigo Python del README."""
 
 import re
 from pathlib import Path

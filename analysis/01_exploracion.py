@@ -1,15 +1,13 @@
 """
-01_exploracion.py — Exploracion estructural del suplemento mmc3.xlsx
-(Gangadharan et al. 2021, Computers & Chemical Engineering).
+01 - Exploracion del suplemento mmc3.xlsx (Gangadharan et al. 2021).
 
-Objetivo: entender que hay en el archivo ANTES de decidir nada de modelado.
-No define el evento ni construye features todavia: solo describe.
+Describe el archivo antes de modelar: duraciones, faltantes, cobertura de
+los dias 1-4, fraccion imputada y perfil del lactato.
 
 Ejecutar:  python analysis/01_exploracion.py
-Salidas: outputs/tablas/*.csv  y un resumen por consola.
+Salidas:   outputs/tablas/*.csv
 
-Por que este script y no un notebook: la exploracion debe ser reproducible
-y versionable. Los notebooks guardan estado oculto y ordenan mal el historial.
+Desarrollado por Arturo Rodriguez.
 """
 
 import numpy as np
@@ -17,10 +15,9 @@ import pandas as pd
 
 from _comun import TABLAS as OUT, XLSX, cargar
 
-# Variables que importan para la hipotesis del lactate shift.
-# Lactato y glucosa son el eje; VCD normaliza por biomasa; glutamina y amonio
-# entran por la hipotesis de que el switch acompana el cambio de metabolismo
-# de glutamina; pH y osmolalidad son condiciones de proceso que lo modulan.
+# Lactato y glucosa son el eje; VCD para normalizar por biomasa; glutamina y
+# amonio por el metabolismo de glutamina; pH y osmolalidad como condiciones
+# de proceso.
 NUCLEO = ["[Lactate]", "[Glucose]", "VCD", "[Glutamine]", "[NH3]",
           "pH", "Osmolality", "[Glutamate]"]
 
@@ -28,9 +25,7 @@ NUCLEO = ["[Lactate]", "[Glucose]", "VCD", "[Glutamine]", "[NH3]",
 def describir_series(nombre: str, df: pd.DataFrame) -> pd.DataFrame:
     """Resumen de estructura: cuantos cultivos, duraciones y huecos."""
     dur = df.groupby("cult")["day"].agg(dia_min="min", dia_max="max", n_filas="count")
-    # Un cultivo es "continuo" si tiene una fila por dia desde d1 hasta su
-    # ultimo dia. Si no, faltan dias completos (no solo celdas sueltas), lo
-    # que afecta directamente a features de ventana fija dias 1-4.
+    # continuo = una fila por dia desde d1 hasta el ultimo dia
     dur["continuo"] = dur["n_filas"] == dur["dia_max"]
     print(f"\n=== {nombre} ===")
     print(f"filas={len(df)}  cultivos={df['cult'].nunique()}  dias {df['day'].min():.0f}-{df['day'].max():.0f}")
@@ -46,12 +41,7 @@ def faltantes(df: pd.DataFrame) -> pd.Series:
 
 
 def cobertura_ventana(raw: pd.DataFrame, dias=(1, 4)) -> pd.DataFrame:
-    """Cuantos dias REALMENTE medidos hay por cultivo en la ventana 1-4.
-
-    Esto decide que features son honestas. Si glutamina solo tiene 2.5 dias
-    medidos de 4 en promedio, una pendiente de glutamina en esa ventana esta
-    construida mayormente sobre valores imputados por los autores.
-    """
+    """Dias realmente medidos por cultivo en la ventana 1-4, por variable."""
     v = raw[(raw["day"] >= dias[0]) & (raw["day"] <= dias[1])]
     filas = []
     for c in NUCLEO:
@@ -64,13 +54,10 @@ def cobertura_ventana(raw: pd.DataFrame, dias=(1, 4)) -> pd.DataFrame:
 
 
 def fraccion_imputada(raw: pd.DataFrame, gap: pd.DataFrame, dias=(1, 4)) -> pd.DataFrame:
-    """Que proporcion de la ventana 1-4 viene del gap-filling de los autores.
+    """Porcentaje de la ventana 1-4 que viene del gap-filling de los autores.
 
-    RIESGO METODOLOGICO: el gap-filling lo hicieron ellos con el cultivo
-    completo disponible. Si para rellenar el dia 3 usaron informacion de los
-    dias 8-15, entonces un feature "del dia 3" contiene informacion del
-    futuro, y el modelo puede parecer predictivo sin serlo. Cuantificar esto
-    es el primer paso; decidir que hacer al respecto viene despues.
+    El gap-filling uso el cultivo completo, asi que un valor rellenado del dia
+    3 puede contener informacion de dias posteriores.
     """
     m = raw.merge(gap, on=["cult", "day"], suffixes=("_r", "_g"))
     v = m[(m["day"] >= dias[0]) & (m["day"] <= dias[1])]
@@ -83,8 +70,7 @@ def fraccion_imputada(raw: pd.DataFrame, gap: pd.DataFrame, dias=(1, 4)) -> pd.D
 
 
 def perfil_lactato(gap: pd.DataFrame) -> pd.DataFrame:
-    """Descripcion del pico de lactato por cultivo. NO es la definicion del
-    evento: es solo para saber si la ventana 1-4 es anticipacion real."""
+    """Pico de lactato por cultivo (descriptivo, no es la definicion del evento)."""
     filas = []
     for c, d in gap.groupby("cult"):
         s = d["[Lactate]"].values
@@ -99,8 +85,8 @@ def perfil_lactato(gap: pd.DataFrame) -> pd.DataFrame:
 
 
 def cruce_hojas() -> None:
-    """Intento de ligar Midpoint/Endpoint (45 filas, con linea celular y lote)
-    con las series de tiempo (106 cultivos). No hay Culture ID en esas hojas."""
+    """Revisa Midpoint/Endpoint (45 filas con linea celular y lote). No traen
+    Culture ID, asi que no se pueden ligar a las series de tiempo."""
     mid = pd.read_excel(XLSX, sheet_name="Midpoint Set")
     end = pd.read_excel(XLSX, sheet_name="Endpoint Set")
     mid.columns = [c.strip() for c in mid.columns]
@@ -147,8 +133,8 @@ def main() -> None:
     print(f"cultivos con pico en dia <= 4: {int((perf['dia_pico'] <= 4).sum())}  "
           "(candidatos a excluir: no hay nada que anticipar)")
 
-    # Escalas: Culture Volume es constante dentro de cada cultivo -> sirve como
-    # variable de grupo para la validacion 'dejar fuera una escala completa'.
+    # Culture Volume es constante por cultivo, se usa como grupo en
+    # leave-one-scale-out
     cv = raw.groupby("cult")["Culture Volume"].nunique()
     print("\nCulture Volume constante por cultivo:", bool((cv == 1).all()))
     escalas = raw.groupby("cult")["Culture Volume"].first().value_counts().sort_index()

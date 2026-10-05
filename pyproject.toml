@@ -9,7 +9,7 @@ description = "Deteccion y prediccion temprana del lactate shift en cultivos de 
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
-authors = [{ name = "Braulio Arturo Rodriguez Angulo", email = "iaartroz@gmail.com" }]
+authors = [{ name = "Arturo Rodriguez (Braulio Arturo Rodriguez Angulo)", email = "iaartroz@gmail.com" }]
 keywords = ["bioprocess", "cell-culture", "CHO", "lactate", "time-to-event", "manufacturing"]
 classifiers = [
   "Development Status :: 3 - Alpha",

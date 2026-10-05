@@ -1,18 +1,13 @@
 """
-08 — ¿Alguna etiqueta del caso de estudio depende de un error de medicion?
+08 - Revisa si alguna etiqueta depende de un punto bajo aislado.
 
-Motivo: en una prueba con datos inventados, un cultivo en meseta con UNA
-medicion muy baja cerca del final se marco como shift (ver
-lactateshift/qc.py). Si eso pasa en los datos reales, algunas etiquetas
-serian artefactos y el modelo aprenderia de ellas.
-
-Prueba: se buscan los puntos bajos aislados con ``isolated_low_points`` y se
-repite la deteccion quitandolos (el hueco se interpola). Si ningun resultado
-cambia, las etiquetas no dependen de ese tipo de error.
-
-No decide que esos puntos sean errores: solo mide si importan.
+Un solo punto muy bajo cerca del final puede crear un shift falso (ver
+lactateshift/qc.py). Se buscan esos puntos con isolated_low_points y se
+repite la deteccion sin ellos (el hueco se interpola).
 
 Ejecutar:  python analysis/08_puntos_aislados.py
+
+Desarrollado por Arturo Rodriguez.
 """
 
 import numpy as np
@@ -22,7 +17,7 @@ from lactateshift import detect_shift, isolated_low_points
 
 from _comun import TABLAS, cargar
 
-# los mismos parametros congelados de 02_definicion_evento.py
+# mismos parametros que 02_definicion_evento.py
 PARAMETROS = dict(smooth_window=3, n_consecutive=2, drop_threshold=0.30)
 
 

@@ -1,8 +1,6 @@
-"""Tests del detector sobre series con respuesta conocida.
+"""Tests del detector con series de respuesta conocida (no usan el dataset).
 
-Estos tests no dependen del dataset del caso de estudio, que esta bajo
-copyright y no se distribuye con el repositorio. Todo lo que se verifica aqui
-se construye en el momento, asi que cualquiera puede correrlos.
+Desarrollado por Arturo Rodriguez.
 """
 
 import numpy as np
@@ -37,15 +35,8 @@ class TestCasosBasicos:
         assert not r.occurred
 
     def test_caida_profunda_con_rebote_SI_cuenta(self):
-        """Documenta el limite real de la regla, que la auditoria externa
-        senalo como no cubierto por los tests.
-
-        Una caida que alcanza el umbral y despues se revierte cuenta como
-        shift. Es deliberado: en cultivos reales el cambio a consumo suele ser
-        reversible. Pero significa que la regla NO distingue un cambio de
-        regimen permanente de una caida profunda transitoria, y eso hay que
-        decirlo en vez de suponer lo contrario.
-        """
+        """Una caida que alcanza el umbral y luego se revierte cuenta como
+        shift (la regla no distingue cambio permanente de transitorio)."""
         v = [1, 2, 3, 4, 5, 6, 7, 10, 7, 5, 4, 3, 12, 13]
         assert detect_shift(range(1, 15), v).occurred
 
@@ -56,7 +47,7 @@ class TestCasosBasicos:
 
 
 class TestRebote:
-    """El caso que rompe cualquier regla anclada en el maximo global."""
+    """Shift seguido de rebote tardio por encima del pico inicial."""
 
     def test_shift_con_rebote_tardio_se_detecta(self):
         df = make_culture(shift_day=6, duration=16, rebound_day=11, noise=0.0)
@@ -78,14 +69,7 @@ class TestDatosImperfectos:
         assert r.occurred and abs(r.day - 7) <= 1
 
     def test_el_muestreo_esparso_degrada_la_precision_del_dia(self):
-        """Caracteriza la degradacion en lugar de fingir que no existe.
-
-        Si faltan dias justo alrededor del pico, la interpolacion mueve el
-        maximo y el dia detectado se corre. Con 30% de dias ausentes el error
-        puede llegar a 2 dias. Quien use el detector sobre datos de muestreo
-        esparso necesita saberlo: el evento se sigue detectando, el dia no es
-        igual de confiable.
-        """
+        """Con 30% de dias faltantes el error en el dia puede llegar a 2."""
         errores = {}
         for frac in (0.0, 0.3):
             errs = []
@@ -121,7 +105,6 @@ class TestDatosImperfectos:
 
 
 class TestFiltrosOpcionales:
-    """Parametros anadidos tras una auditoria externa."""
 
     def test_min_peak_descarta_oscilaciones_cerca_de_cero(self):
         # caida relativa del 87% sobre una serie de amplitud despreciable
@@ -130,12 +113,8 @@ class TestFiltrosOpcionales:
         assert not detect_shift(range(1, 10), v, min_peak=0.01).occurred
 
 
-
 class TestPropiedadMaximoLocal:
-    """El punto que detecta la regla es siempre un maximo local de la serie
-    suavizada. No se impone: se sigue de la regla. Una auditoria externa lo
-    puso en duda y una verificacion mal hecha lo "confirmo"; este test es la
-    comprobacion correcta."""
+    """El punto detectado es un maximo local de la serie suavizada."""
 
     def test_en_series_aleatorias(self):
         rng = np.random.default_rng(0)
@@ -207,9 +186,7 @@ class TestParametros:
 
 
 class TestRefinamientoDelPico:
-    """El suavizado centrado sesga el dia detectado hacia atras cuando la
-    caida es mas rapida que la subida. Este es el test que documenta el bug
-    y su correccion."""
+    """refine_peak corrige el desplazamiento del dia causado por el suavizado."""
 
     def test_refinamiento_reduce_el_sesgo(self):
         series, verdad = make_synthetic_cultures(40, seed=2)
@@ -224,9 +201,7 @@ class TestRefinamientoDelPico:
         assert abs(errores[True]) < 0.3, "con refinamiento el sesgo casi desaparece"
 
     def test_refinamiento_corrige_tambien_hacia_adelante(self):
-        """Pico brusco y caida lenta: el suavizado corre el maximo hacia
-        ADELANTE (dia 8) y el refinamiento lo devuelve al maximo real (dia 7).
-        En los cultivos reales este es el caso mas frecuente."""
+        """Pico brusco y caida lenta: sin refinar da dia 8, con refinar dia 7."""
         v = [1, 2, 3, 4, 5, 6, 10, 9.5, 9, 8.5, 8, 7.5, 7, 6, 5]
         sin = detect_shift(range(1, 16), v, refine_peak=False)
         con = detect_shift(range(1, 16), v, refine_peak=True)

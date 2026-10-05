@@ -1,27 +1,20 @@
 """
-02 — Definicion del lactate shift y analisis de sensibilidad.
+02 - Definicion del lactate shift y analisis de sensibilidad.
 
-Produce la etiqueta central: el dia en que cada cultivo pasa de producir a
-consumir lactato, con los cultivos que nunca lo hacen como censurados.
+Etiqueta: dia en que cada cultivo pasa de producir a consumir lactato; los
+que no lo hacen quedan censurados. La regla esta en lactateshift.detect.
 
-La regla vive en el paquete (``lactateshift.detect``); aqui solo se aplica al
-dataset del caso de estudio y se documentan las decisiones que son propias de
-ESTE dataset.
-
-DECISION — la etiqueta se construye sobre 'Raw Data', no sobre 'Gap-Filled'.
-El paper describe el gap-filling de variables dependientes del tiempo como
-interpolacion de Stineman seguida de SVR entrenado sobre series completas.
-Stineman interpola usando el punto anterior Y el posterior: es retrospectiva.
-Para la etiqueta no seria fatal (se lee despues del experimento y puede mirar
-todo el cultivo), pero introduce curvatura sintetica justo en la derivada que
-estamos midiendo. El lactato solo tiene 3% de celdas faltantes en Raw, asi que
-no hace falta pagar ese precio. Gap-Filled se compara al final.
-
-DECISION — un shift ocurrido dentro de la ventana de observacion (dias 1-4) se
-excluye del conjunto de modelado en vez de marcarse como "sin shift". No es un
-problema de anticipacion: el desenlace ya es visible en las propias variables.
+Decisiones:
+- La etiqueta se calcula sobre 'Raw Data'. El gap-filling de los autores
+  (Stineman + SVR) usa puntos posteriores y mete curvatura artificial en la
+  derivada. El lactato solo tiene 3% de faltantes en Raw. Gap-Filled se
+  compara al final.
+- Un shift dentro de la ventana (dias 1-4) se excluye en vez de marcarse
+  como "sin shift", porque ahi no hay nada que anticipar.
 
 Ejecutar:  python analysis/02_definicion_evento.py
+
+Desarrollado por Arturo Rodriguez.
 """
 
 from itertools import product
@@ -45,8 +38,7 @@ def etiquetar(df: pd.DataFrame, **kw) -> pd.DataFrame:
 
 
 def sensibilidad(df: pd.DataFrame) -> pd.DataFrame:
-    """Si la proporcion de eventos se mueve mucho con los parametros, la
-    definicion es arbitraria y hay que declararlo."""
+    """Numero de eventos con distintas combinaciones de parametros."""
     filas = []
     for v, n, u in product([1, 3, 5], [2, 3], [0.20, 0.30, 0.40, 0.50]):
         e = etiquetar(df, smooth_window=v, n_consecutive=n, drop_threshold=u)
@@ -88,10 +80,7 @@ def main() -> None:
     print(sens.pivot_table(index=["suavizado", "dias_consec"], columns="umbral",
                            values="n_evento").to_string())
 
-    # Cuanto y hacia donde mueve el dia la correccion del suavizado en los
-    # datos reales. La explicacion original (el suavizado corre el maximo
-    # hacia atras) venia de los datos sinteticos y resulto no describir bien
-    # a los cultivos reales: aqui se mide en vez de suponerse.
+    # Cuanto y hacia donde mueve el dia refine_peak en los datos reales
     sin_ref = etiquetar(raw, smooth_window=SUAVIZADO, n_consecutive=N_CONSEC,
                         drop_threshold=UMBRAL, refine_peak=False)
     ambos = et["occurred"] & sin_ref["occurred"]

@@ -1,18 +1,11 @@
-"""Datos sinteticos de cultivos con shift conocido.
+"""Cultivos sinteticos con dia del shift conocido.
 
-El dataset real usado en el caso de estudio (material suplementario de
-Gangadharan et al., 2021) esta bajo copyright de Elsevier y no puede
-redistribuirse aqui. Este modulo genera cultivos sinteticos con el dia del
-shift conocido de antemano, para que cualquiera pueda probar el paquete,
-correr los tests y ver un ejemplo completo sin conseguir ese archivo.
+Sirven para probar el paquete y correr los tests sin el dataset del caso de
+estudio, que no se puede redistribuir. No reproducen la forma de un cultivo
+real (aqui la caida es mas brusca que la subida), solo sirven para verificar
+el detector.
 
-Los datos sinteticos NO reproducen la biologia de un cultivo real. Sirven
-para verificar que el detector hace lo que dice, no para sacar conclusiones.
-
-Tampoco reproducen su forma: aqui la subida se aplana antes del maximo y la
-caida es brusca, mientras que en los 106 cultivos del caso de estudio la caida
-suele ser mas lenta que la subida. Se comprobo al ver que la correccion del
-suavizado movia el dia en sentidos opuestos en unos y otros.
+Desarrollado por Arturo Rodriguez.
 """
 
 from __future__ import annotations
@@ -43,9 +36,7 @@ def make_culture(
         Dia en que la serie cambia de subir a bajar. ``None`` produce una serie
         monotona creciente (un cultivo que nunca hace el shift).
     rebound_day:
-        Si se da, la serie vuelve a subir a partir de ese dia. Reproduce el
-        rebote tardio observado en cultivos reales, que es el caso que rompe
-        cualquier regla anclada en el maximo global.
+        Si se da, la serie vuelve a subir a partir de ese dia (rebote tardio).
     missing_frac:
         Fraccion de dias que se eliminan, para simular muestreo incompleto.
     """

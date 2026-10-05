@@ -1,10 +1,9 @@
-"""Verifica que el dataset del caso de estudio este presente y sea el correcto.
+"""Verifica que el dataset este presente y sea el correcto (SHA-256).
 
-Se corre antes que cualquier otro script del analisis. Comprobar el hash no es
-burocracia: el analisis entero depende de un archivo que cada persona descarga
-por su cuenta, y un archivo distinto (otra version del suplemento, una
-descarga truncada, un guardado accidental desde Excel) produciria resultados
-distintos sin avisar.
+Correr antes que los demas scripts. Si el archivo es otra version o se
+descargo incompleto, los resultados cambian sin avisar.
+
+Desarrollado por Arturo Rodriguez.
 """
 
 from __future__ import annotations

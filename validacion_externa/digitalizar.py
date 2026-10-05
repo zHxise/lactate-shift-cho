@@ -23,6 +23,8 @@ Tres tipos de extraccion, de mas a menos exacta:
 Con --control ademas guarda en fuentes/ figuras que dibujan los puntos
 extraidos encima de la figura original (requiere matplotlib). Se quedan en
 fuentes/ porque contienen la figura del articulo.
+
+Desarrollado por Arturo Rodriguez.
 """
 
 from __future__ import annotations

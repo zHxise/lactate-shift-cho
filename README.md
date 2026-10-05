@@ -1,5 +1,7 @@
 # lactateshift
 
+Desarrollado por Arturo Rodriguez.
+
 Deteccion del *lactate shift* en cultivos de celulas de mamifero, y un caso de
 estudio sobre si ese cambio puede anticiparse desde los primeros dias del
 cultivo.
@@ -17,12 +19,12 @@ Este repositorio tiene dos partes:
 2. **`analysis/`**, un caso de estudio sobre 106 cultivos CHO industriales de
    5 a 500 L, que intenta predecir el dia del shift usando solo los dias 1-4.
 
-El caso de estudio llega a un **resultado mixto, y eso es parte del punto**.
+El caso de estudio llega a un **resultado mixto**.
 Las variables de los dias 1-4 predicen el dia del shift mejor que el dia
 tipico de cada escala de reactor, incluso dentro de una misma escala. Pero esa
 relacion no se traslada a una escala que el modelo no vio: es especifica de
-cada contexto de proceso. Las dos cosas estan documentadas, con los
-experimentos que las sostienen y los errores que se corrigieron en el camino.
+cada contexto de proceso. Las dos cosas estan documentadas abajo, con los
+experimentos que las sostienen.
 
 ![Pipeline del proyecto](docs/pipeline.png)
 
@@ -126,11 +128,10 @@ estuviera en plena bajada, el punto anterior tambien cumpliria las dos
 condiciones con una caida mayor y habria sido elegido primero. Hay un test que
 lo comprueba sobre cientos de series aleatorias.
 
-**Lo que la regla no hace**, y conviene decirlo porque es facil suponer lo
-contrario: una caida profunda que despues se revierte **si** cuenta como
-shift. Es deliberado — en cultivos reales el cambio a consumo suele ser
-reversible y el lactato vuelve a subir en fase tardia — pero significa que la
-regla detecta *el inicio de un descenso sostenido y profundo*, no *un cambio
+**Lo que la regla no hace:** una caida profunda que despues se revierte **si**
+cuenta como shift. Es a proposito (en cultivos reales el cambio a consumo
+suele ser reversible y el lactato vuelve a subir en fase tardia), pero
+significa que la regla detecta *el inicio de un descenso sostenido y profundo*, no *un cambio
 de regimen permanente*. Tampoco filtra por amplitud absoluta salvo que se le
 pase `min_peak`: sin ese parametro, una serie que oscile cerca de cero puede
 producir una caida relativa del 30% que es solo ruido analitico.
@@ -141,8 +142,7 @@ producirlo al final hasta superar el pico inicial. Una regla anclada en el
 maximo global marca esos cultivos como "sin shift", lo cual es falso: el shift
 ocurrio, solo fue reversible. En el caso de estudio, con los mismos
 parametros, la regla del maximo global detecta 76 de 106 cultivos y la del
-primer maximo local 101. El error se descubrio graficando las curvas, no
-mirando numeros.
+primer maximo local 101. El problema se encontro al graficar las curvas.
 
 **Correccion del desplazamiento del suavizado.** Una media movil centrada
 corre el maximo hacia el lado donde la curva es mas suave. Con
@@ -157,13 +157,12 @@ suavizar, dentro de un dia, lo que corrige en cualquiera de los dos sentidos.
 - En los datos reales el refinamiento mueve el dia en 40 de 101 cultivos:
   31 hacia atras y 9 hacia adelante.
 
-Esas dos lineas cuentan algo incomodo. Los sinteticos tienen una subida que se
-aplana y una caida brusca, asi que ahi el suavizado corre el maximo hacia
-atras. En los cultivos reales pasa lo contrario con mas frecuencia: la caida
-suele ser mas lenta que la subida. **Los sinteticos reproducen la idea que el
-autor tenia de un cultivo, no la forma real**: sirven para verificar que el
-mecanismo hace lo que promete, no para describir cultivos. La validacion
-sintetica se reproduce con `python examples/validar_detector_sintetico.py`.
+Los sinteticos tienen una subida que se aplana y una caida brusca, asi que
+ahi el suavizado corre el maximo hacia atras. En los cultivos reales pasa lo
+contrario con mas frecuencia: la caida suele ser mas lenta que la subida.
+**Los sinteticos no reproducen la forma de los cultivos reales**: sirven para
+verificar el detector, no para describir cultivos. La validacion sintetica se
+reproduce con `python examples/validar_detector_sintetico.py`.
 
 ## Validacion externa del detector
 
@@ -211,7 +210,7 @@ python analysis/02b_figura_evento.py         # verificacion visual
 python analysis/03_features.py               # variables de los dias 1-4
 python analysis/04_modelado.py               # regresion, Cox y controles
 python analysis/05_shap.py                   # interpretacion y sus limites
-python analysis/06_respuesta_auditoria.py    # experimentos de la auditoria externa
+python analysis/06_respuesta_auditoria.py    # controles adicionales
 python analysis/07_baseline_por_escala.py    # ¿aportan algo las variables por encima de la escala?
 python analysis/08_puntos_aislados.py        # ¿alguna etiqueta depende de un error de medicion?
 python docs/verificar_readme.py              # cada cifra de este README contra las salidas
@@ -219,8 +218,6 @@ python docs/verificar_readme.py              # cada cifra de este README contra 
 
 Todas las cifras de esta seccion se guardan en `outputs/tablas/` y
 `docs/verificar_readme.py` comprueba que cada una aparezca aqui tal cual.
-Existe porque dos veces una cifra de este README quedo desactualizada sin que
-nadie lo notara.
 
 ### La pregunta que este trabajo responde, y la que no
 
@@ -238,8 +235,8 @@ CHO". Responde una pregunta condicional:
 > Dado un cultivo que **todavia no ha hecho el shift** al cerrar el dia 4,
 > ¿que dia lo hara?
 
-Los 16 cultivos excluidos no se predicen. Y hay una consecuencia operativa mas
-incomoda, senalada en auditoria externa: **saber que un cultivo pertenece a
+Los 16 cultivos excluidos no se predicen. Ademas hay una consecuencia
+operativa: **saber que un cultivo pertenece a
 esa poblacion requiere informacion posterior al dia 4.** La propia regla
 necesita dias siguientes para confirmar que un descenso es sostenido. En una
 planta, aplicar este modelo exigiria primero un clasificador para esa
@@ -249,7 +246,7 @@ un oraculo retrospectivo.
 Dia del evento: mediana 6, rango 5 a 11 (20 cultivos en el dia 5, 32 en el 6,
 22 en el 7, 6 en el 8, 4 en el 9 y 1 en el 11). La anticipacion efectiva
 sobre la ventana es de **2 dias en mediana**, y 20 de 85 eventos ocurren a un
-solo dia del cierre. Es poco, y decirlo cambia como se lee lo que sigue.
+solo dia del cierre. Es una anticipacion corta.
 
 ### Que salio
 
@@ -316,13 +313,13 @@ viene de que el modelo conociera el volumen de la escala nueva.
 ### ¿Las variables aportan algo por encima de la escala?
 
 La objecion principal al resultado es que predecir el dia del shift podria
-ser lo mismo que *aprender a que escala pertenece el cultivo*. El control
-de solo-escala ya mostraba que la escala predice por si sola, asi que
-"predecir la mediana global" era un rival demasiado debil.
+ser lo mismo que *aprender a que escala pertenece el cultivo*. El control de
+solo-escala ya mostraba que la escala predice por si sola, asi que "predecir
+la mediana global" es un baseline debil.
 
-`analysis/07_baseline_por_escala.py` usa el rival fuerte — **predecir el dia
-mediano de la propia escala**, que por si solo erra 0.769 dias — y reporta la
-incertidumbre con bootstrap sobre cultivos, que son la unidad independiente:
+`analysis/07_baseline_por_escala.py` usa un baseline mas fuerte, **predecir
+el dia mediano de la propia escala**, que por si solo erra 0.769 dias, y
+reporta la incertidumbre con bootstrap sobre cultivos:
 
 | Comparacion | Diferencia (dias) | IC 95% |
 |---|---|---|
@@ -388,8 +385,7 @@ La direccion de los efectos: mas biomasa y crecimiento mas rapido en los dias
 1-4, y un lactato mas alto o que sube mas rapido, adelantan el shift. Mas
 glutamato, amonio o pH lo retrasan.
 
-Pero la magnitud engana, y el repositorio incluye las comprobaciones que lo
-demuestran.
+Pero la magnitud de la importancia hay que leerla con cuidado.
 
 **Importancia no es necesidad.** El glutamato domina el ranking de SHAP
 (0.52 de |SHAP| sumado, contra 0.18 de la siguiente, la glucosa) y tambien
@@ -407,8 +403,8 @@ modelo una variable, no cuanta informacion **unica** aporta: la del glutamato
 tambien esta en las demas, y el modelo la recupera de ahi.
 
 (La variable a quitar se eligio despues de ver los resultados de SHAP, lo que
-sesga el experimento. Conviene notar hacia donde: ese sesgo favorece que
-quitarla empeore el modelo, y no empeora. La lectura es conservadora.)
+sesga el experimento, pero a favor de que quitarla empeore el modelo, y no
+empeora.)
 
 **Parte de la senal del glutamato es identidad del proceso.** Su grafico de
 dependencia no muestra una relacion continua sino dos nubes separadas.
@@ -419,18 +415,18 @@ familia de cultivos pertenece el lote. Eso no contradice la prueba dentro de
 escala de la seccion anterior: el glutamato es la variable preferida del
 modelo, no la unica fuente de informacion.
 
-### Auditoria
+### Revision del codigo y del analisis
 
 El codigo y el analisis se revisaron en varias rondas buscando errores.
 
-**Errores reales encontrados y corregidos:**
+**Errores encontrados y corregidos:**
 
 1. `<col>_n` contaba como medidos los dias rellenados. Habia un test que
    afirmaba ese comportamiento.
 2. La prueba de permutacion congelaba un `alpha` de Ridge elegido con las
    etiquetas reales, lo que sesgaba el p-valor a favor del resultado.
 3. SHAP agrupaba lactato/glucosa y lactato/VCD en una sola categoria.
-4. El README afirmaba que ningun modelo le ganaba al baseline al cambiar de
+4. Este README afirmaba que ningun modelo le ganaba al baseline al cambiar de
    escala; Ridge si le gana en una de las tres.
 5. Los experimentos de sensibilidad corrian con 27 variables en vez de 28.
 6. Una correlacion reportada (0.78) era de una corrida anterior.
@@ -449,13 +445,13 @@ El codigo y el analisis se revisaron en varias rondas buscando errores.
 
 **Objeciones que resultaron incorrectas al verificarlas:** que la permutacion
 de Cox rompia el par (tiempo, evento), y que el detector no garantizaba un
-maximo local. La segunda se habia aceptado en la segunda ronda con una
-verificacion mal hecha — comparaba el dia ya refinado, no el punto detectado —
-y se retiro en la revision final. La opcion que se habia agregado para
-"corregirla" hacia que las mesetas no se detectaran nunca, y se elimino.
+maximo local. La segunda se habia aceptado con una verificacion mal hecha
+(comparaba el dia ya refinado, no el punto detectado) y se retiro despues. La
+opcion que se habia agregado para "corregirla" hacia que las mesetas no se
+detectaran nunca, y se elimino.
 
-**Experimentos que motivaron las auditorias** (`analysis/06_respuesta_auditoria.py`
-y `analysis/07_baseline_por_escala.py`):
+**Controles adicionales** (`analysis/06_respuesta_auditoria.py` y
+`analysis/07_baseline_por_escala.py`):
 
 *¿El modelo solo extrapola la curva de lactato que ya empezo?*
 
@@ -537,9 +533,9 @@ refinamiento del pico en los dos sentidos, que la cuenta de dias medidos no
 incluya los rellenados, que la pendiente use solo mediciones reales, que las
 variables no cambien al agregar dias posteriores, que los p-valores nunca
 sean cero, que los ejemplos de codigo de este README corran tal cual, y que
-el script del CSV explique en espanol lo que esta mal en un archivo en vez de
-fallar con una traza, y que los puntos bajos aislados se senalen sin confundir
-una bajada real ni el ruido cerca de cero.
+el script del CSV explique en espanol lo que esta mal en un archivo, y que los
+puntos bajos aislados se senalen sin confundir una bajada real ni el ruido
+cerca de cero.
 
 ## Cita del dataset
 
@@ -547,6 +543,11 @@ una bajada real ni el ruido cerca de cero.
 > N.K.H., Dikicioglu, D. (2021). Data intelligence for process performance
 > prediction in biologics manufacturing. *Computers & Chemical Engineering*,
 > 146, 107226. https://doi.org/10.1016/j.compchemeng.2021.107226
+
+## Autor
+
+Desarrollado por Arturo Rodriguez (Braulio Arturo Rodriguez Angulo),
+Ingenieria Bioquimica, ENCB-IPN.
 
 ## Licencia
 

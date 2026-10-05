@@ -1,33 +1,24 @@
 """
-03 — Variables predictoras de los dias 1-4.
+03 - Variables predictoras de los dias 1-4.
 
 Una fila por cultivo, solo con informacion disponible al cerrar el dia 4.
-La construccion vive en ``lactateshift.features``; aqui se eligen las
-variables del caso de estudio y se justifica la eleccion.
 
-POR QUE ESTAS VARIABLES Y NO OTRAS
-El nucleo son las que tienen cobertura real en la ventana: lactato, glucosa,
-VCD, amonio, pH y glutamato tienen al menos tres dias medidos en 95 o mas de
-los 106 cultivos. Glutamina y osmolalidad no llegan (55 y 68 cultivos), y
-ademas son las que mas imputo el gap-filling de los autores, asi que se
-calculan aparte para poder medir si aportan algo o solo meten ruido.
+Seleccion de variables:
+- Nucleo: lactato, glucosa, VCD, amonio, pH y glutamato (al menos tres dias
+  medidos en 95 o mas de los 106 cultivos).
+- Glutamina y osmolalidad tienen menos cobertura (55 y 68 cultivos) y son las
+  mas imputadas, por eso van aparte.
+- Cocientes lactato/VCD y lactato/glucosa: lactato por celula y respecto al
+  sustrato.
+- No se usan la duracion, ECT ni las hojas Midpoint/Endpoint (se conocen
+  despues del dia 4). El volumen si, se conoce desde el inicio.
 
-Los cocientes tienen justificacion biologica: el lactato absoluto depende de
-cuantas celulas hay, asi que lo que interesa es la intensidad glucolitica por
-celula (lactato/VCD) y respecto al sustrato disponible (lactato/glucosa).
-
-QUE NO PUEDE SER VARIABLE
-La duracion del cultivo se conoce al cosechar, no al dia 4. ECT es el dia
-mismo. Midpoint y Endpoint Set son posteriores por definicion. El volumen de
-cultivo si entra: se conoce antes de inocular.
-
-LIMITACION HEREDADA DEL DATASET
-Los datos vienen normalizados 0-1 por columna sobre los 106 cultivos. Esa
-normalizacion ya uso todo el conjunto, asi que hay una fuga leve e inevitable
-en el dato de origen. No se puede deshacer (no hay unidades) y hay que
-declararla. Es otra razon para preferir cocientes y pendientes sobre niveles.
+Nota: los datos vienen normalizados 0-1 sobre los 106 cultivos, lo que es una
+fuga leve que no se puede deshacer.
 
 Ejecutar:  python analysis/03_features.py
+
+Desarrollado por Arturo Rodriguez.
 """
 
 import pandas as pd
@@ -54,8 +45,7 @@ def main() -> None:
     print("\nvariables con celdas faltantes (se imputan dentro del fold, script 04):")
     print(falt.to_string() if len(falt) else "  ninguna")
 
-    # Vistazo exploratorio. NO es seleccion de variables: elegir por esta
-    # tabla seria fuga, porque se calcula con todo el conjunto.
+    # Solo exploratorio, no se usa para elegir variables (seria fuga).
     con_ev = mod[mod["evento"]]
     cors = (con_ev[X.columns].corrwith(con_ev["dia_evento"], method="spearman")
             .dropna().sort_values(key=abs, ascending=False))

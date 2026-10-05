@@ -1,12 +1,14 @@
 """
-02b — Verificacion visual de la definicion del evento.
+02b - Revision visual de la definicion del evento.
 
-Ningun numero sustituye a mirar las curvas. Fue esta figura la que tumbo la
-primera version de la regla, anclada en el maximo global: al graficar los
-cultivos marcados como "sin shift" se veia que muchos si lo hacian y despues
+Grafica muestras de cultivos con shift temprano, tardio, censurados y
+excluidos. Con estas figuras se descarto la primera version de la regla
+(maximo global), porque varios cultivos "sin shift" si lo hacian y luego
 rebotaban.
 
 Ejecutar:  python analysis/02b_figura_evento.py
+
+Desarrollado por Arturo Rodriguez.
 """
 
 import matplotlib

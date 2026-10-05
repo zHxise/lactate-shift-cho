@@ -11,6 +11,8 @@ entenderlo, no para cambiarlo:
    respuesta es un intervalo de 8 dias y no un dia.
 
     python validacion_externa/exploratorio.py
+
+Desarrollado por Arturo Rodriguez.
 """
 
 from __future__ import annotations

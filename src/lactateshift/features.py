@@ -1,13 +1,10 @@
-"""Variables predictoras de una ventana temprana, sin fuga de informacion.
+"""Variables predictoras de una ventana temprana.
 
-La regla que gobierna este modulo: ninguna cantidad calculada aqui puede
-depender de un dato posterior al ultimo dia de la ventana, ni de otras series
-del conjunto.
+Ninguna variable depende de datos posteriores al ultimo dia de la ventana ni
+de otras series. Los faltantes se dejan como NaN; la imputacion se hace en el
+pipeline de modelado, dentro de cada fold.
 
-Lo primero evita mirar el futuro. Lo segundo evita que el conjunto de prueba
-se filtre al de entrenamiento: por eso los valores que faltan por completo se
-dejan como ``NaN`` en lugar de imputarse aqui. La imputacion pertenece al
-pipeline de modelado, donde se ajusta solo con el fold de entrenamiento.
+Desarrollado por Arturo Rodriguez.
 """
 
 from __future__ import annotations
@@ -21,14 +18,7 @@ __all__ = ["slope", "early_window_features"]
 
 
 def slope(days: Sequence[float], values: Sequence[float]) -> float:
-    """Pendiente de una recta ajustada por minimos cuadrados.
-
-    Se prefiere sobre la diferencia entre extremos (``ultimo - primero``)
-    porque con tres o cuatro puntos ruidosos esa diferencia depende por
-    completo de dos mediciones, y una sola lectura mala la arruina. La recta
-    usa todos los puntos disponibles. Con menos de dos puntos validos no hay
-    pendiente definida y devuelve ``NaN``.
-    """
+    """Pendiente por minimos cuadrados. NaN si hay menos de dos puntos."""
     d = np.asarray(days, dtype=float)
     v = np.asarray(values, dtype=float)
     m = np.isfinite(d) & np.isfinite(v)
@@ -40,17 +30,9 @@ def slope(days: Sequence[float], values: Sequence[float]) -> float:
 def _causal_window(
     g: pd.DataFrame, day_col: str, window: int, value_cols: list[str]
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Dias 1..window en rejilla completa, con relleno solo hacia atras.
-
-    ``ffill`` hace que un hueco herede del dia anterior, nunca del posterior.
-    Es la unica forma de relleno admisible dentro de la ventana: el dia 3 puede
-    heredar del dia 2, jamas del dia 5.
-
-    Devuelve dos tablas: la rellenada y la mascara de lo que realmente se
-    midio ANTES de rellenar. La segunda hace falta porque contar mediciones
-    sobre la tabla rellenada cuenta valores heredados como si fueran
-    mediciones nuevas.
-    """
+    """Dias 1..window en rejilla completa, rellenando solo con el dia anterior
+    (ffill). Devuelve la tabla rellenada y la mascara de lo medido antes de
+    rellenar."""
     w = g[g[day_col] <= window]
     if w[day_col].duplicated().any():
         raise ValueError("hay dias repetidos dentro de una misma serie")
@@ -75,36 +57,20 @@ def early_window_features(
     Para cada columna en ``value_cols`` genera cuatro variables:
 
     ``<col>_last``
-        Ultimo valor medido dentro de la ventana: el nivel alcanzado. Si falta
-        el ultimo dia, es el del dia medido mas reciente (relleno hacia atras,
-        nunca hacia adelante).
+        Ultimo valor dentro de la ventana (si falta el ultimo dia, el del dia
+        medido mas reciente).
     ``<col>_slope``
-        Pendiente por minimos cuadrados, calculada SOLO con los dias medidos.
+        Pendiente por minimos cuadrados, solo con los dias medidos.
     ``<col>_mean``
         Promedio de los dias medidos.
-
-    Por que la pendiente y el promedio no usan los dias rellenados: una
-    version anterior los calculaba sobre la serie ya rellenada. Si faltaba el
-    dia 3, heredaba el valor del dia 2, y la pendiente se aplanaba con un dato
-    que nadie midio. No era fuga (el relleno es hacia atras) pero si un sesgo
-    evitable: el relleno sirve para tener un "ultimo valor conocido", no para
-    fabricar puntos de una regresion.
     ``<col>_n``
-        Cuantos dias se midieron de verdad, contados ANTES del relleno hacia
-        atras. Importa: una pendiente calculada sobre dos puntos no merece la
-        misma confianza que una sobre cuatro, y dejar esa cuenta como variable
-        permite que el modelo lo tenga en cuenta y que tu lo audites despues.
-        Contarlo despues del relleno seria contar valores heredados como
-        mediciones, que es un error facil de cometer y dificil de notar.
+        Numero de dias medidos (sin contar los rellenados).
 
-    ``ratios`` acepta pares ``(numerador, denominador)`` y agrega el cociente
-    al cierre de la ventana. Los cocientes suelen ser mas comparables entre
-    escalas y lotes que los niveles absolutos.
+    ``ratios``: pares ``(numerador, denominador)``; agrega el cociente al
+    cierre de la ventana.
 
-    ``static_cols`` son columnas constantes dentro de cada serie y conocidas
-    desde el inicio (escala del reactor, consigna de temperatura). Se toma su
-    primer valor. No incluyas aqui nada que solo se sepa al terminar el
-    cultivo, como su duracion.
+    ``static_cols``: columnas constantes dentro de cada serie y conocidas
+    desde el inicio (por ejemplo la escala). Se toma su primer valor.
     """
     value_cols = list(value_cols)
     filas = []
@@ -115,8 +81,8 @@ def early_window_features(
         f: dict[str, float] = {}
 
         for col in value_cols:
-            x = w[col].to_numpy(dtype=float)           # rellenada hacia atras
-            m = medido[col].to_numpy()                 # lo realmente medido
+            x = w[col].to_numpy(dtype=float)
+            m = medido[col].to_numpy()
             x_med = np.where(m, x, np.nan)
             f[f"{col}_last"] = x[-1]
             f[f"{col}_slope"] = slope(days, x_med)

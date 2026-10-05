@@ -1,10 +1,5 @@
-"""Los scripts de examples/ deben correr con una instalacion minima.
-
-Existe porque el script del CSV fallaba si solo se instalaban las
-dependencias de desarrollo: usaba matplotlib, que no es dependencia del
-paquete. La prueba de usuario del autor no lo detecto porque ya tenia todo
-instalado.
-"""
+"""Los scripts de examples/ deben correr con la instalacion minima
+(sin matplotlib)."""
 
 import subprocess
 import sys
@@ -31,10 +26,7 @@ def test_detectar_en_csv_con_columnas_equivocadas(tmp_path):
     assert "faltan columnas" in r.stdout
 
 
-# --- Casos que encontro la prueba con datos inventados (24 sep 2026). Antes
-# de corregirlos: el CSV vacio tronaba con una traza de pandas, el de Excel en
-# espanol decia que faltaban columnas que si estaban, el texto en una celda
-# daba un error en ingles y la tabla ponia C10 antes que C2.
+# --- archivos con problemas comunes
 
 def _correr(tmp_path, contenido, *extra):
     csv = tmp_path / "datos.csv"

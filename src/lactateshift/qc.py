@@ -1,14 +1,11 @@
-"""Control de calidad de una serie antes de interpretar la deteccion.
+"""Control de calidad de una serie de lactato.
 
-Por que existe: en una prueba con datos inventados, un cultivo en meseta con
-UNA medicion muy baja cerca del final (3.2, 0.7, 4.3) se marco como shift.
-La media movil de 3 dias no basta para anular un error de medicion de un dia
-cuando ese dia esta cerca del borde de la serie: en el ultimo dia el
-promedio solo tiene dos puntos y uno es el erroneo.
+Un solo punto muy bajo cerca del final de la serie (por ejemplo 3.2, 0.7,
+4.3) puede crear un shift falso, porque la media movil no lo compensa en el
+borde. Esta funcion solo senala esos puntos para revisarlos; el detector no
+se modifica.
 
-No se cambia el detector (su version esta congelada por la validacion
-externa). Esta funcion solo SENALA los puntos que conviene revisar; decidir
-si son errores le toca a quien conoce el experimento.
+Desarrollado por Arturo Rodriguez.
 """
 
 from __future__ import annotations
@@ -31,12 +28,10 @@ def isolated_low_points(
 
     Un punto se senala si cumple las tres condiciones:
 
-    1. esta por debajo de sus DOS vecinos medidos (un minimo aislado, no un
-       tramo de bajada);
+    1. esta por debajo de sus dos vecinos medidos;
     2. vale menos de ``factor`` veces el promedio de esos vecinos;
-    3. los vecinos no estan cerca de cero: su promedio supera ``min_rel``
-       veces el maximo de la serie. Despues del consumo el lactato queda
-       cerca de cero y ahi las diferencias relativas son solo ruido.
+    3. el promedio de los vecinos supera ``min_rel`` veces el maximo de la
+       serie (para ignorar el ruido cerca de cero).
 
     Los NaN se ignoran: los vecinos son las mediciones anterior y siguiente.
     """

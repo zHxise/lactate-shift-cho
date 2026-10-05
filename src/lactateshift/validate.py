@@ -1,8 +1,6 @@
 """Controles contra la fuga de informacion y el sobreajuste.
 
-Con muestras pequenas, un resultado que parece bueno casi siempre lo parece
-por una razon equivocada. Estas funciones existen para que refutarlo sea tan
-facil como producirlo.
+Desarrollado por Arturo Rodriguez.
 """
 
 from __future__ import annotations
@@ -25,15 +23,9 @@ def permutation_test(
 ) -> dict:
     """Compara un puntaje real contra su distribucion con la etiqueta barajada.
 
-    Es la pregunta mas basica que hay que hacerle a un modelo: si la etiqueta
-    no tuviera ninguna relacion con las variables, .cuantas veces obtendria
-    por azar un resultado como este? ``score_fn`` debe recibir una etiqueta y
-    devolver el puntaje ya validado de forma cruzada.
-
-    El p-valor usa la correccion estandar (k + 1) / (n + 1), donde k es el
-    numero de barajadas al menos tan buenas como el resultado real. Sin el +1
-    el p-valor puede salir exactamente 0, lo que no es un p-valor valido: con
-    n barajadas, lo minimo que se puede afirmar es 1 / (n + 1).
+    ``score_fn`` recibe una etiqueta y devuelve el puntaje ya validado de
+    forma cruzada. p-valor = (k + 1) / (n + 1), con k el numero de barajadas
+    al menos tan buenas como el resultado real.
 
     Returns
     -------
@@ -65,12 +57,8 @@ def leave_one_group_out(
 ) -> pd.DataFrame:
     """Entrena excluyendo un grupo completo y predice sobre el.
 
-    Es la prueba dura cuando los datos vienen de contextos distintos (escalas
-    de reactor, sitios, lineas celulares): mide si el modelo transfiere a un
-    contexto que nunca vio, no solo si interpola dentro de los que conoce.
-    Un modelo puede tener buen desempeno con validacion cruzada aleatoria y
-    fallar por completo aqui; cuando eso pasa, lo que hay que reportar es
-    esto.
+    Mide si el modelo funciona en un grupo (por ejemplo una escala) que no
+    vio al entrenar.
     """
     tam = groups.value_counts()
     usables = tam[tam >= min_group_size].index
@@ -102,34 +90,17 @@ def out_of_fold_shap(
 ):
     """Valores SHAP calculados siempre fuera del fold de entrenamiento.
 
-    Por que no basta entrenar con todo y explicar eso: SHAP explica al modelo,
-    no al fenomeno. Un modelo sobreajustado produce explicaciones nitidas de su
-    propio sobreajuste. Calculando los valores solo sobre observaciones que el
-    modelo no vio, lo que queda es la parte de la explicacion que sobrevive a
-    datos nuevos.
-
     ``make_model`` debe devolver un modelo de arboles nuevo en cada llamada
-    (``TreeExplainer`` solo admite modelos basados en arboles). La imputacion
-    se ajusta dentro de cada fold.
+    (se usa TreeExplainer). La imputacion se ajusta dentro de cada fold.
 
     Returns
     -------
     (shap_df, importancia, folds)
-        ``shap_df`` con una fila por observacion y los valores SHAP promediados
-        sobre las repeticiones, para leer la DIRECCION del efecto.
-        ``importancia`` es la media de ``|SHAP|`` calculada dentro de cada fold
-        y promediada despues: es la forma correcta de medir magnitud.
-        ``folds`` es la lista de Series por fold, para ver si el orden de
-        importancia es estable o cambia con la particion.
-
-    Notes
-    -----
-    Importa el orden de las operaciones. Tomar el valor absoluto DESPUES de
-    promediar los valores con signo entre folds cancela las contribuciones de
-    las variables cuyo efecto cambia de signo segun la particion, y deja
-    intactas las de efecto monotono consistente. El resultado es un ranking que
-    exagera a unas variables y borra a otras. El valor absoluto va primero,
-    dentro de cada fold, y el promedio despues.
+        ``shap_df``: valores SHAP por observacion, promediados sobre las
+        repeticiones (para la direccion del efecto).
+        ``importancia``: media de ``|SHAP|`` dentro de cada fold, promediada
+        entre folds.
+        ``folds``: importancia de cada fold, para ver la estabilidad.
     """
     from sklearn.impute import SimpleImputer
     from sklearn.model_selection import RepeatedKFold

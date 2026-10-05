@@ -14,6 +14,8 @@ cultivo en la carpeta <archivo>_figuras/.
 
 Acepta tambien el CSV que guarda Excel en espanol (punto y coma entre
 columnas y coma decimal). Los nombres de columna no distinguen mayusculas.
+
+Desarrollado por Arturo Rodriguez.
 """
 
 from __future__ import annotations
@@ -47,10 +49,8 @@ def leer_csv(ruta: Path) -> pd.DataFrame:
 
 
 def revisar(datos: pd.DataFrame) -> str | None:
-    """Devuelve un mensaje en espanol si los datos no se pueden usar, o None.
-
-    Los problemas de forma de cada serie (dias repetidos, no enteros, que no
-    empiezan en 1) los revisa el propio detector; aqui van los del archivo."""
+    """Devuelve un mensaje si los datos no se pueden usar, o None.
+    Los problemas de cada serie (dias repetidos, etc.) los revisa el detector."""
     faltan = COLUMNAS - set(datos.columns)
     if faltan:
         return (f"Al CSV le faltan columnas: {sorted(faltan)}. Necesita {sorted(COLUMNAS)}; "
@@ -71,7 +71,7 @@ def revisar(datos: pd.DataFrame) -> str | None:
 
 
 def _orden_natural(s) -> list:
-    # C2 antes que C10, como lo leeria una persona
+    # C2 antes que C10
     return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", str(s))]
 
 
@@ -94,8 +94,7 @@ def main() -> int:
         return 1
     negativos = sorted(datos.loc[datos["lactate"] < 0, "culture"].astype(str).unique())
     if negativos:
-        # no se rechaza (puede haber datos centrados o con linea base restada),
-        # pero una concentracion negativa casi siempre es un error de captura
+        # solo se avisa, puede haber datos con linea base restada
         print(f"Aviso: hay lactato negativo en {', '.join(negativos)}. Una concentracion "
               "no puede ser negativa; revisa esos datos.\n")
 
@@ -104,14 +103,10 @@ def main() -> int:
                                smooth_window=a.suavizado, drop_threshold=a.umbral,
                                n_consecutive=a.consecutivos)
     except ValueError as e:
-        # los errores de entrada (dias repetidos, no enteros...) se explican
-        # en el mensaje; no hace falta la traza completa para corregirlos
         print(f"Problema con los datos: {e}")
         return 1
 
-    # Un solo punto muy bajo, sobre todo cerca del final, puede crear un shift
-    # falso (la media de 3 dias no lo anula en el borde). No se corrige: se
-    # avisa, porque decidir si es un error le toca a quien hizo el experimento.
+    # aviso de puntos bajos aislados (pueden crear un shift falso)
     aislados = {c: isolated_low_points(g["day"], g["lactate"])
                 for c, g in datos.groupby("culture")}
     aislados = {c: d for c, d in aislados.items() if d}
@@ -126,7 +121,6 @@ def main() -> int:
         "occurred": "hubo_shift", "day": "dia_shift", "time": "tiempo",
         "drop_fraction": "caida_relativa", "reason": "motivo"})
     for col in ("dia_shift", "caida_relativa"):
-        # sin ningun shift la columna llega como None; se muestra como NaN
         tabla[col] = pd.to_numeric(tabla[col])
     tabla = tabla.loc[sorted(tabla.index, key=_orden_natural)]
     print(tabla.round(3).to_string())
@@ -137,8 +131,7 @@ def main() -> int:
     print(f"Tabla guardada en {salida}")
 
     if not a.sin_figuras:
-        # matplotlib no es dependencia del paquete (solo numpy y pandas). Si no
-        # esta instalado, la tabla ya se guardo: se avisa en vez de fallar.
+        # matplotlib es opcional
         try:
             import matplotlib
         except ImportError:

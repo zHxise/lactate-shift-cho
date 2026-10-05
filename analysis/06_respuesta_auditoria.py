@@ -1,31 +1,15 @@
 """
-06 — Experimentos surgidos de una auditoria externa del proyecto.
+06 - Controles adicionales del modelo.
 
-Controles adicionales sobre objeciones que el analisis original no
-respondia.
-
-Las cuatro preguntas:
-
-A. .El modelo solo extrapola la trayectoria de lactato que ya empezo?
-   La etiqueta se construye de la curva futura de lactato, y el lactato
-   temprano esta entre las variables. Si el modelo pierde casi todo su
-   desempeno al quitarle el lactato, lo que hace es continuar una curva, no
-   anticipar un cambio metabolico.
-
-B. .El leave-one-scale-out mide transferencia de verdad?
-   ``escala`` esta entre las variables, asi que el modelo conoce el volumen de
-   la escala nueva aunque no haya visto cultivos de ella. Repetirlo sin esa
-   variable mide transferencia mas limpia.
-
-C. .Las conclusiones aguantan otras definiciones del evento?
-   La sensibilidad original solo contaba eventos y dias. No decia si el MAE
-   cambia cuando cambia la definicion, que es lo que importa.
-
-D. .La correccion del pico (``refine_peak``) sesga los resultados?
-   Movio los excluidos de 6 a 16 cultivos. Hay que ver el efecto sobre el
-   desempeno, no solo sobre el conteo.
+A. Desempeno sin las variables de lactato (el modelo podria solo continuar
+   la curva de lactato).
+B. Leave-one-scale-out sin la variable 'escala'.
+C. Desempeno con otras definiciones del evento.
+D. Efecto de refine_peak (cambia los excluidos de 6 a 16).
 
 Ejecutar:  python analysis/06_respuesta_auditoria.py
+
+Desarrollado por Arturo Rodriguez.
 """
 
 import warnings
@@ -80,7 +64,7 @@ def cargar_tabla():
 # ---------------------------------------------------------------- A
 def experimento_a(t, nucleo):
     print("=" * 72)
-    print("A. .El modelo solo continua la trayectoria de lactato?")
+    print("A. Desempeno sin variables de lactato")
     print("=" * 72)
     con_ev = t[t["evento"]]
     y = con_ev["dia_evento"]
@@ -98,9 +82,8 @@ def experimento_a(t, nucleo):
                       "MAE": round(mu, 3), "sd": round(sd, 3)})
     d = pd.DataFrame(filas)
     print(d.to_string(index=False))
-    print("\nLectura: si 'SIN lactato' se acerca a 'todas', el desempeno no")
-    print("depende de extrapolar la curva de lactato. Si se desploma hacia el")
-    print("baseline, la objecion de la auditoria es correcta.")
+    print("\nSi 'SIN lactato' queda cerca de 'todas', el desempeno no depende")
+    print("de las variables de lactato.")
     d.to_csv(TABLAS / "aud_a_sin_lactato.csv", index=False)
 
 
@@ -128,8 +111,7 @@ def experimento_b(t, nucleo):
             filas.append({"variables": etiqueta, "modelo": nombre,
                           "mae_ponderado": d.attrs["weighted_mean"]})
     pd.DataFrame(filas).to_csv(TABLAS / "aud_b_loso_sin_escala.csv", index=False)
-    print("\nNota: son solo tres escalas (43, 18 y 16 cultivos). Permite decir")
-    print("que no transfiere ENTRE ESTAS TRES, no que no transfiera en general.")
+    print("\nNota: solo son tres escalas (43, 18 y 16 cultivos).")
 
 
 # ---------------------------------------------------------------- C y D
@@ -138,8 +120,7 @@ def reconstruir(raw, **kw) -> tuple[pd.DataFrame, list[str], int]:
     et = detect_shift_batch(raw, id_col="cult", day_col="day",
                             value_col="[Lactate]", **kw)
     et["excluir"] = et["occurred"] & (et["day"] <= VENTANA)
-    # Misma funcion que el pipeline principal (03). La version anterior
-    # duplicaba el codigo y olvidaba vcd_crec_rel.
+    # misma funcion que el script 03
     X = construir_variables(raw, extendidas=False)
     tabla = X.join(et[["occurred", "day"]].rename(
         columns={"occurred": "evento", "day": "dia_evento"})).join(et[["excluir"]])
@@ -149,13 +130,10 @@ def reconstruir(raw, **kw) -> tuple[pd.DataFrame, list[str], int]:
 
 def experimento_cd(raw):
     print("\n" + "=" * 72)
-    print("C y D. .El desempeno aguanta otras definiciones del evento?")
+    print("C y D. Desempeno con otras definiciones del evento")
     print("=" * 72)
-    print("La sensibilidad original solo contaba eventos. Aqui se rehace el")
-    print("modelo completo con cada definicion y se compara contra su propio")
-    print("baseline, que cambia cuando cambia el conjunto.")
-    print("Las cifras se comparan ENTRE FILAS, no contra el 0.575 del pipeline")
-    print("principal: aqui la validacion usa menos repeticiones por costo.\n")
+    print("Cada definicion se compara contra su propio baseline. Se usan menos")
+    print("repeticiones que en el script 04, comparar solo entre filas.\n")
 
     filas = []
     configs = [(3, 2, 0.30, True), (3, 2, 0.30, False), (1, 2, 0.30, True),
@@ -181,8 +159,6 @@ def experimento_cd(raw):
     print(f"\nMejora sobre el baseline en todas las definiciones probadas: "
           f"min {d['mejora'].min():.3f}, max {d['mejora'].max():.3f}, "
           f"mediana {d['mejora'].median():.3f}")
-    print("Si la mejora es positiva en todas, la conclusion no depende de los")
-    print("parametros elegidos. Si cambia de signo en alguna, si depende.")
 
 
 def main():

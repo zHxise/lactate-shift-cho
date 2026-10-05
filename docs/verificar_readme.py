@@ -1,16 +1,13 @@
 """Comprueba que cada cifra del README coincida con las salidas del analisis.
 
-Existe porque dos veces una cifra del README quedo desactualizada sin que
-nadie lo notara: una vez porque se re-ejecuto el analisis y el texto no se
-actualizo, y otra porque un reemplazo de texto fallo en silencio. Leer el
-README con cuidado no bastaba; hace falta una comprobacion que falle sola.
-
-Cada entrada de CIFRAS dice de donde sale el numero y como debe aparecer
-escrito. Si alguna no aparece, el script termina con codigo 1.
+Cada entrada dice de donde sale el numero y como debe aparecer escrito. Si
+alguna no aparece, el script termina con codigo 1.
 
 Requiere haber corrido antes los scripts de analysis/ y el ejemplo:
     python examples/validar_detector_sintetico.py
     python docs/verificar_readme.py
+
+Desarrollado por Arturo Rodriguez.
 """
 
 from __future__ import annotations
@@ -213,7 +210,7 @@ def cifras() -> list[tuple[str, str]]:
     c.append(("glutamato y escala", f"el {frac[True] * 100:.0f}% del grupo alto cae\nen una sola escala"))
     c.append(("glutamato y dia", f"(mediana {med[True]:.0f} contra {med[False]:.0f})"))
 
-    # --- experimentos de auditoria
+    # --- controles adicionales (script 06)
     a = leer("aud_a_sin_lactato.csv").set_index("conjunto")["MAE"]
     c += [
         ("sin lactato: solo lactato", f"| Solo variables de lactato (6) | {f3(a['solo variables de lactato'])} |"),
@@ -278,8 +275,7 @@ def cifras() -> list[tuple[str, str]]:
 
 
 def main() -> int:
-    # la consola de Windows puede no tener algunos caracteres (como el signo
-    # menos tipografico); se reemplazan en vez de fallar
+    # para consolas de Windows sin algunos caracteres
     try:
         sys.stdout.reconfigure(errors="replace")
     except AttributeError:

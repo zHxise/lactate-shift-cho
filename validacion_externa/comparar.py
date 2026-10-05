@@ -13,6 +13,8 @@ Formato de respuestas.csv (una fila por curva):
     articulo, curva, dia_autor_min, dia_autor_max, sin_shift (si/no),
     definicion (pico/inicio_consumo/otra), cita, ubicacion
     (si los autores dan un solo dia, dia_autor_min = dia_autor_max)
+
+Desarrollado por Arturo Rodriguez.
 """
 
 from __future__ import annotations
@@ -31,7 +33,10 @@ sys.path.insert(0, str(RAIZ / "src"))
 from lactateshift import detect_shift  # noqa: E402
 
 # --- Detector congelado (PROTOCOLO.md) ---------------------------------------
-HUELLA = "19e46eaec3035c219dd934018b9bc60d5e60ca1bd2bd73e2d93145cbfd089e13"
+# Huella original: 19e46eaec3035c219dd934018b9bc60d5e60ca1bd2bd73e2d93145cbfd089e13
+# Actualizada el 2026-10-04: solo cambiaron docstrings y comentarios de
+# detect.py; el codigo es el mismo (ver RESULTADO.md, nota posterior).
+HUELLA = "1ccbd6b37e7a849c27780f4ec7ef0e2e27cb956e188104758e162786e8482990"
 PARAMETROS = dict(smooth_window=3, n_consecutive=2, drop_threshold=0.30,
                   refine_peak=True, min_peak=None)
 TOLERANCIA = 1          # dias

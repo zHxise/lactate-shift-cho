@@ -1,4 +1,4 @@
-# Validacion externa del detector — protocolo
+# Validacion externa del detector: protocolo
 
 Escrito y guardado en git **antes** de buscar o extraer cualquier dato. La
 fecha del commit que introduce este archivo es la prueba de que las reglas se

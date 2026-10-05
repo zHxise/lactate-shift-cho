@@ -1,31 +1,18 @@
 """
-07 — ¿Las variables de proceso aportan algo por encima de la escala?
+07 - Las variables de proceso aportan algo por encima de la escala?
 
-Objecion: predecir el dia del shift podria ser lo mismo que aprender a que
-escala pertenece el cultivo. El control de solo-escala ya mostraba que la escala
-predice por si sola (MAE 0.795 contra 0.835). Con eso a la vista, "predecir
-la mediana global" es un rival debil. Este script usa el rival fuerte y dos
-pruebas que atacan la pregunta directamente.
+La escala sola ya predice algo (MAE 0.795 contra 0.835), asi que la mediana
+global es un baseline debil.
 
-A. Rival fuerte: predecir la mediana de la PROPIA escala (calculada con el
-   fold de entrenamiento). Incertidumbre por bootstrap sobre CULTIVOS.
-
-   Por que sobre cultivos y no sobre folds: la primera version de este script
-   tomaba el percentil 2.5-97.5 de las diferencias por fold. Eso mide cuanto
-   varia UN fold de ~17 cultivos, no la incertidumbre de la diferencia media,
-   y con folds tan chicos el intervalo cruzaba cero incluso contra la mediana
-   global, donde la permutacion del script 04 ya mostraba que el modelo gana.
-   Era un intervalo mal construido que llevaba a una conclusion falsa. La
-   unidad independiente es el cultivo: se promedia el error fuera de fold de
-   cada cultivo sobre las repeticiones y se remuestrean cultivos.
-
-B. Dentro de una sola escala (la de 43 cultivos). Ahi la escala es constante,
-   asi que cualquier mejora sobre la mediana tiene que venir de otras
-   variables. Con prueba de permutacion dentro de esa escala.
-
-C. De donde sale la ventaja: error por dia real del evento.
+A. Baseline: mediana de la propia escala (con el fold de entrenamiento).
+   Intervalo por bootstrap sobre cultivos (se promedia el error fuera de
+   fold de cada cultivo y se remuestrean cultivos).
+B. Dentro de una sola escala (43 cultivos), con prueba de permutacion.
+C. Error por dia real del evento.
 
 Ejecutar:  python analysis/07_baseline_por_escala.py
+
+Desarrollado por Arturo Rodriguez.
 """
 
 import warnings
@@ -114,7 +101,6 @@ def main() -> None:
         for b, bn in [("global", "mediana global"), ("escala", "mediana de la escala")]:
             d = (e[b] - e[m]).to_numpy()
             lo, hi = bootstrap(d)
-            # un extremo inferior pegado a cero no es una victoria: es el limite
             if lo >= 0.01:
                 veredicto = "gana"
             elif hi < 0:
@@ -130,7 +116,7 @@ def main() -> None:
 
     # ------------------------------------------------------------------ B
     print("\n" + "=" * 72)
-    print("B. Dentro de una sola escala: la escala no puede explicar nada")
+    print("B. Dentro de una sola escala")
     print("=" * 72)
     esc = c["escala"].round(6)
     grande = esc.value_counts().idxmax()

@@ -1,33 +1,24 @@
 """
-04 — Prediccion del dia del shift desde los dias 1-4.
+04 - Prediccion del dia del shift desde los dias 1-4.
 
-Tarea principal: regresion del dia del evento sobre los cultivos con evento
-observado. Tarea complementaria: Cox sobre el conjunto completo, que si
-aprovecha los censurados.
+Regresion del dia del evento (cultivos con evento) y Cox sobre el conjunto
+completo (incluye censurados).
 
-LO QUE SE HACE PARA NO ENGANARSE
-1. Imputacion y estandarizacion dentro de un Pipeline, asi que se ajustan solo
-   con el fold de entrenamiento. Imputar antes de partir es el error mas comun
-   en trabajos de este tamano y basta para inventar desempeno.
-2. Baseline trivial: predecir siempre la mediana del entrenamiento. Si un
-   modelo no le gana, no aprendio nada. Con el dia del evento concentrado
-   entre 5 y 7, este baseline es fuerte.
-3. Control de solo-escala: si predecir con el volumen de reactor da casi lo
-   mismo que el modelo completo, lo aprendido es en que equipo se corrio el
-   experimento, no biologia.
-4. Leave-one-scale-out: entrenar en unas escalas y predecir en otra.
-5. Prueba de permutacion: barajar la etiqueta y repetir todo.
+Controles:
+1. Imputacion y escalado dentro de un Pipeline (se ajustan solo con el fold
+   de entrenamiento).
+2. Baseline: mediana del entrenamiento.
+3. Control con solo la escala del reactor.
+4. Leave-one-scale-out.
+5. Prueba de permutacion.
 
-CORRECCION AL PLAN ORIGINAL
-Agrupar la validacion cruzada por cultivo no hace nada aqui: la matriz tiene
-una fila por cultivo, asi que equivale a un KFold normal. La agrupacion que
-importaria es por linea celular o lote, y no esta disponible: las hojas
-Midpoint/Endpoint traen esa informacion para 45 cultivos pero sin llave a las
-series de tiempo. Dos cultivos de la misma linea pueden caer uno en
-entrenamiento y otro en prueba, asi que el desempeno reportado es
-probablemente optimista.
+Nota: como hay una fila por cultivo, agrupar por cultivo equivale a KFold.
+Lo correcto seria agrupar por linea celular o lote, pero esa informacion no
+se puede ligar a las series, asi que el desempeno puede ser optimista.
 
 Ejecutar:  python analysis/04_modelado.py
+
+Desarrollado por Arturo Rodriguez.
 """
 
 import warnings
@@ -53,9 +44,7 @@ ALPHAS = np.logspace(-3, 3, 25)
 
 
 def pipe(modelo):
-    # clone: cada ajuste recibe una copia sin entrenar. Reusar la misma
-    # instancia entre folds funciona hoy, pero se rompe en silencio con
-    # cualquier modelo que conserve estado entre ajustes (warm_start).
+    # clone para que cada fold use un modelo sin entrenar
     return Pipeline([("imp", SimpleImputer(strategy="median")),
                      ("esc", StandardScaler()),
                      ("mod", clone(modelo))])
@@ -100,19 +89,9 @@ def main() -> None:
     pd.DataFrame(filas).to_csv(TABLAS / "resultados_regresion.csv", index=False)
 
     # --- permutacion ------------------------------------------------------
-    # La primera version fijaba el alpha de Ridge una sola vez, con las
-    # etiquetas reales, y lo reutilizaba en todas las barajadas. Eso invalida
-    # el p-valor y ademas lo sesga a favor: con etiquetas barajadas, RidgeCV
-    # elegiria una regularizacion mucho mas fuerte y predeciria cerca de la
-    # media, dando un MAE nulo MENOR. Congelar un alpha pequeno obliga al
-    # modelo nulo a sobreajustar ruido y a errar mas de lo que erraria si se
-    # le dejara elegir. La prueba correcta repite el procedimiento COMPLETO,
-    # seleccion de hiperparametro incluida, dentro de cada permutacion.
-    # Error encontrado en auditoria externa.
-    # Se corre para los dos modelos. La primera version solo permutaba Ridge,
-    # mientras que la cifra destacada en el README era la del Random Forest:
-    # el p-valor no respaldaba el numero que se estaba presentando. Error
-    # encontrado en auditoria externa.
+    # En cada permutacion se repite todo el procedimiento, incluida la
+    # seleccion de alpha de RidgeCV. Fijar alpha con las etiquetas reales
+    # sesga el p-valor. Se corre para Ridge y Random Forest.
     print("\n=== Prueba de permutacion (nucleo) ===")
     Xn = con_ev[nucleo]
     perm_filas = []
@@ -120,8 +99,7 @@ def main() -> None:
                           ("random forest", lambda: RandomForestRegressor(
                               n_estimators=150, min_samples_leaf=3,
                               random_state=SEED, n_jobs=-1))]:
-        # El bosque es mucho mas caro, asi que lleva menos barajadas. Eso
-        # limita la resolucion del p-valor (minimo 1/n_perm), no su validez.
+        # RF es mas lento: menos barajadas (p minimo mas alto)
         n_perm, n_rep = (200, 2) if nombre == "ridge" else (40, 1)
         res = permutation_test(lambda yy: mae_cv(hacer(), Xn, yy, n_rep=n_rep)[0],
                                y, n_permutations=n_perm, seed=SEED, lower_is_better=True)
@@ -135,7 +113,6 @@ def main() -> None:
 
     # --- leave-one-scale-out ---------------------------------------------
     print("\n=== Leave-one-scale-out (escalas con >=15 cultivos) ===")
-    print("La prueba dura: transfiere el modelo a una escala que nunca vio?")
     loso_filas = []
     for nombre, m in modelos.items():
         def fit_predict(Xtr, ytr, Xte, _m=m):
@@ -165,9 +142,8 @@ def main() -> None:
     T, E = t["tiempo"].rename("tiempo"), t["evento"].astype(int).rename("evento")
 
     def cox_cidx(X, T, E, n_rep=2, seed=SEED) -> float:
-        """La imputacion y el escalado se ajustan dentro de cada fold.
-        lifelines no se integra con Pipeline, asi que se hace a mano; hacerlo
-        fuera del fold inflaria el c-index."""
+        """c-index con imputacion y escalado dentro de cada fold (a mano,
+        lifelines no usa Pipeline)."""
         out = []
         for tr, te in RepeatedKFold(n_splits=5, n_repeats=n_rep, random_state=seed).split(X):
             Xtr, Xte = X.iloc[tr], X.iloc[te]
@@ -186,7 +162,7 @@ def main() -> None:
     real = cox_cidx(t[nucleo], T, E)
     print(f"c-index: {real:.3f}   (0.5 = azar)")
 
-    # Un c-index alto con tiempos tan empatados invita a sospechar. Dos controles:
+    # controles: permutacion y solo escala
     rng = np.random.default_rng(SEED)
     nulos = np.array([cox_cidx(t[nucleo],
                                pd.Series(T.to_numpy()[k], index=T.index, name="tiempo"),

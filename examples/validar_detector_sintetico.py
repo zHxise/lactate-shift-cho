@@ -1,14 +1,11 @@
 """Valida el detector contra cultivos sinteticos con dia del shift conocido.
 
-No necesita el dataset con copyright: cualquiera puede correrlo. Reproduce la
-cifra del README sobre la correccion del sesgo del suavizado (refine_peak).
-
-Limite que hay que tener presente: los cultivos sinteticos tienen la forma que
-el autor supone que tiene un cultivo (subida y caida exponenciales). Validar
-contra ellos comprueba que el detector hace lo que se diseno para hacer, no
-que ese diseno describa bien a un cultivo real.
+No necesita el dataset. Reproduce las cifras del README sobre refine_peak.
+Los cultivos sinteticos no tienen la forma de un cultivo real.
 
 Ejecutar:  python examples/validar_detector_sintetico.py
+
+Desarrollado por Arturo Rodriguez.
 """
 
 import pandas as pd

@@ -16,8 +16,8 @@ pagina del articulo (se necesita acceso institucional o compra) y colocarlo en
 este directorio.
 
 El manuscrito aceptado si esta disponible en abierto en el repositorio de UCL:
-https://discovery.ucl.ac.uk/id/eprint/10119588/ — util para leer el metodo,
-aunque no incluye el suplemento de datos.
+https://discovery.ucl.ac.uk/id/eprint/10119588/ (util para leer el metodo,
+aunque no incluye el suplemento de datos).
 
 ## Verificacion
 

@@ -1,10 +1,8 @@
 """Genera el diagrama del pipeline del proyecto (docs/pipeline.png).
 
-No es una red neuronal: el proyecto no tiene capas de neuronas. El equivalente
-honesto es el recorrido de los datos, desde las series crudas del biorreactor
-hasta la predicción y su verificación.
-
 Ejecutar:  python docs/diagrama_pipeline.py
+
+Desarrollado por Arturo Rodriguez.
 """
 
 from pathlib import Path
@@ -109,13 +107,11 @@ ax2.add_patch(FancyBboxPatch((x0, 0.165), ancho_total, 0.105,
                              boxstyle="round,pad=0.008,rounding_size=0.025",
                              facecolor=VERDE, alpha=0.14, edgecolor=VERDE, lw=1.4, zorder=1))
 ax2.text(0.5, 0.218,
-         "Regla que gobierna todo: ninguna variable puede depender de un dato posterior al día 4, "
+         "Regla: ninguna variable puede depender de un dato posterior al día 4, "
          "ni de otros cultivos del conjunto",
          ha="center", va="center", fontsize=10.5, color="#27632F", fontweight="bold", zorder=4)
 
-# Las cifras se leen de las salidas del analisis en vez de escribirse a mano:
-# una version anterior del diagrama siguio mostrando numeros viejos despues de
-# re-ejecutar el analisis.
+# las cifras se leen de las salidas del analisis
 _tab = Path(__file__).resolve().parents[1] / "outputs" / "tablas"
 try:
     import pandas as pd
@@ -129,5 +125,7 @@ ax2.text(0.5, 0.075, _resultado, ha="center", va="center", fontsize=10.2, color=
 
 fig.suptitle("Cómo funciona el proyecto: del biorreactor a la predicción",
              fontsize=15.5, fontweight="bold", y=0.962)
+fig.text(0.975, 0.012, "Desarrollado por Arturo Rodriguez", ha="right", va="bottom",
+         fontsize=8.5, color=GRIS)
 fig.savefig(SALIDA, dpi=140, facecolor="white")
 print(f"Diagrama en {SALIDA}")

@@ -1,4 +1,4 @@
-# Validacion externa del detector — resultado
+# Validacion externa del detector: resultado
 
 Fecha: 2026-09-24. Protocolo: `PROTOCOLO.md` (commit `b48eaa8`, fijado antes de
 buscar datos). Orden registrado en git: curvas (`d530162`) → detecciones
@@ -82,6 +82,14 @@ afirmar nada.
 En el caso de estudio "shift" significa una caida de al menos 30%. Los 5
 cultivos censurados (sin shift) pueden incluir shifts suaves como los dos que
 aqui no se detectaron. El README lo agrega a las limitaciones.
+
+## Nota posterior (2026-10-04)
+
+Se editaron los docstrings y comentarios de `src/lactateshift/detect.py` para
+acortarlos. El codigo no cambio: el arbol sintactico del archivo, sin
+docstrings, es identico al de la version congelada. Como la huella SHA-256
+cubre el archivo completo, se actualizo en `comparar.py` (la original queda
+anotada ahi y en `PROTOCOLO.md`). Las detecciones no cambian.
 
 ## Reproducir
 

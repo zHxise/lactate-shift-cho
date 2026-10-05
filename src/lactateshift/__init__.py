@@ -1,15 +1,13 @@
-"""lactateshift — deteccion y prediccion temprana del lactate shift.
+"""lactateshift: deteccion y prediccion temprana del lactate shift.
 
-Dos piezas:
+Modulos:
+    detect    deteccion del shift en una serie de lactato
+    features  variables de una ventana temprana
+    datasets  cultivos sinteticos con shift conocido
+    validate  permutacion, leave-one-group-out y SHAP fuera de fold
+    qc        puntos bajos aislados
 
-* :mod:`lactateshift.detect` — detecta el shift en cualquier serie de lactato.
-* :mod:`lactateshift.features` — construye variables predictoras de una
-  ventana temprana sin dejar entrar informacion posterior a ella.
-
-Y tres apoyos: :mod:`lactateshift.datasets` (cultivos sinteticos con shift
-conocido), :mod:`lactateshift.validate` (controles contra la fuga de
-informacion y el sobreajuste) y :mod:`lactateshift.qc` (senala mediciones
-sospechosas antes de interpretar la deteccion).
+Desarrollado por Arturo Rodriguez.
 """
 
 from .detect import ShiftResult, detect_shift, detect_shift_batch, regularize, smooth
@@ -18,6 +16,7 @@ from .datasets import make_culture, make_synthetic_cultures
 from .qc import isolated_low_points
 
 __version__ = "0.1.0"
+__author__ = "Arturo Rodriguez"
 __all__ = [
     "ShiftResult", "detect_shift", "detect_shift_batch", "regularize", "smooth",
     "early_window_features", "slope",
