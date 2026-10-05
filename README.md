@@ -33,7 +33,7 @@ experimentos que las sostienen.
 ## Instalacion
 
 ```bash
-git clone https://github.com/USUARIO/lactate-shift-cho
+git clone https://github.com/zHxise/lactate-shift-cho
 cd lactate-shift-cho
 pip install -e ".[dev]"        # paquete + tests
 pip install -e ".[analysis]"   # + lo necesario para el caso de estudio
