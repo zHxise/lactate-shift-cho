@@ -453,7 +453,14 @@ fijadas antes de correrlos:
   q·L/(K + L)·IVCD, con K elegida solo con los cultivos de entrenamiento,
   mejora el error despues del shift tanto con el shift real (−0.0036, IC
   −0.0051 a −0.0021) como con F predicho (−0.0029, IC −0.0041 a −0.0017).
-  K salio intermedia (0.2 en 4 de 5 folds), no de orden cero. Se adopta.
+  K salio intermedia (0.2 en 4 de 5 folds), no de orden cero. Se adopta,
+  con una reserva: supone que el 0 de los datos normalizados es lactato
+  casi cero. Si se fuerza un desplazamiento de 0.05 o 0.10, se elige el
+  primer orden en todos los folds y la ventaja desaparece. Los propios datos
+  prefieren desplazamiento 0 (con todos los cultivos, el ajuste empeora a
+  medida que crece: 0.979 del error del primer orden con 0, 1.045 con 0.10),
+  lo que cuadra con que el consumo se detiene cerca del 0 normalizado. Sin
+  las concentraciones reales no se puede confirmar.
 - **El shift como evento del cultivo.** Promediar trayectorias con cambio
   brusco en cada dia posible, en lugar de mezclar tasas con F, no mejora
   (+0.0003, IC 0.0001 a 0.0006). Leer F como fraccion de celulas que ya

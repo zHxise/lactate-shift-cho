@@ -29,6 +29,11 @@ por cultivo que los scripts 17 y 18. Tambien se repite el control de
 estructura (riesgo solo con el dia) con el consumo nuevo, para ver si la
 conclusion "la estructura sola no aporta" cambia.
 
+SENSIBILIDAD (sugerida por la revision): con un desplazamiento c > 0 en la
+forma saturable (el 0 de los datos min-max no seria lactato cero), la
+conclusion podria cambiar. Se prueba forzando c = 0.05 y 0.10, y se mira que
+c prefieren los datos.
+
 REGLAS DE DECISION (fijadas antes de correr):
   A se adopta si, con interruptor perfecto Y con F predicho, el RMSE de los
     dias posteriores al shift mejora sobre el primer orden con IC pareado
@@ -65,10 +70,18 @@ m2 = import_module("18_modelo2_dos_estados")
 REJILLA_K = [0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, np.inf]
 
 
+# Desplazamiento del lactato en la forma saturable. Los datos son min-max: el
+# lactato real es a + b*L con "a" desconocido, asi que el L = 0 de los datos no
+# es necesariamente lactato cero. C_OFF = 0 en el analisis principal; la
+# sensibilidad (al final de main) lo cambia a 0.05 y 0.10 para ver si la
+# conclusion depende de ese supuesto.
+C_OFF = 0.0
+
+
 def g(L, K):
     """Dependencia del consumo con el lactato. K = inf -> L (primer orden)."""
     L = np.maximum(L, 0.0)
-    return L if np.isinf(K) else L / (K + L)
+    return L if np.isinf(K) else (L + C_OFF) / (K + L + C_OFF)
 
 
 # ---------------------------------------------------------------- modelo 2 con g(L)
@@ -277,6 +290,38 @@ def main() -> None:
     tiempo.round(4).to_csv(TABLAS / "modelo2_consumo_mezcla_tiempo.csv", index=False)
     print("\n" + tiempo.round(3).to_string(index=False))
     print(f"\nK en el extremo superior (primer orden) en {sum(np.isinf(k) for k in ks)} de {len(ks)} folds")
+
+    # ------------------------------------------------ sensibilidad al desplazamiento
+    global C_OFF
+    sens = []
+    for c_off in (0.05, 0.10):
+        C_OFF = c_off
+        ts, ks_s = correr(S, pp, pp_ciego, et, m3, "M2")
+        for fn in ("techo", "pred"):
+            d, ic = m1.ic_pareado(ts[f"M2_saturable_{fn}_post"], ts[f"M2_lineal_{fn}_post"])
+            sens.append({"desplazamiento": c_off, "interruptor": fn, "dif_post": d, "ic_bajo": ic[0],
+                         "ic_alto": ic[1], "K_por_fold": " ".join(str(k) for k in ks_s)})
+    # que desplazamiento prefieren los datos: ajuste con todos los cultivos (descriptivo,
+    # no es validacion) para cada desplazamiento, con la mejor K, relativo al primer orden
+    todo = pd.concat([S[c] for c in S])
+    mu = (todo["ph_prev"].mean(), todo["pco2_prev"].mean())
+    sd = (todo["ph_prev"].std(), todo["pco2_prev"].std())
+    C_OFF = 0.0
+    mse_lineal = ajustar(S, sorted(S), et, mu, sd, np.inf)[1]
+    pref = []
+    for c_off in (0.0, 0.01, 0.02, 0.05, 0.10):
+        C_OFF = c_off
+        mejor = min(((K, ajustar(S, sorted(S), et, mu, sd, K)[1]) for K in REJILLA_K[:-1]), key=lambda r: r[1])
+        pref.append({"desplazamiento": c_off, "mejor_K": mejor[0], "mse_relativo_a_primer_orden": mejor[1] / mse_lineal})
+    pref = pd.DataFrame(pref)
+    pref.round(4).to_csv(TABLAS / "modelo2_consumo_desplazamiento.csv", index=False)
+    print("\nAjuste con todos los cultivos segun el desplazamiento (< 1 = mejor que primer orden):")
+    print(pref.round(4).to_string(index=False))
+    C_OFF = 0.0
+    sens = pd.DataFrame(sens)
+    sens.round(4).to_csv(TABLAS / "modelo2_consumo_sensibilidad.csv", index=False)
+    print("\nSensibilidad al desplazamiento de la normalizacion (saturable - lineal, despues del shift):")
+    print(sens.round(4).to_string(index=False))
 
 
 if __name__ == "__main__":

@@ -455,6 +455,12 @@ def cifras_v2() -> list[tuple[str, str]]:
     c.append(("v20: A pred", f"con F predicho ({neg(a2['dif'])}, IC {neg(a2['ic_bajo'])} a {neg(a2['ic_alto'])})"))
     c.append(("v20: B", f"(+{b1['dif']:.4f}, IC {b1['ic_bajo']:.4f} a {b1['ic_alto']:.4f})"))
     c.append(("v20: control", f"(+{cc['dif']:.4f} en el perfil, IC {cc['ic_bajo']:.4f} a {cc['ic_alto']:.4f})"))
+    dz = leer("modelo2_consumo_desplazamiento.csv").set_index("desplazamiento")["mse_relativo_a_primer_orden"]
+    c.append(("v20: desplazamiento", f"{dz.loc[0.0]:.3f} del error del primer orden con 0, {dz.loc[0.1]:.3f} con 0.10"))
+    se = leer("modelo2_consumo_sensibilidad.csv")
+    c.append(("v20: desplazamiento fuerza primer orden",
+              "se elige el\n  primer orden en todos los folds" if (se["K_por_fold"].str.split().explode() == "inf").all()
+              else "FALTA: con desplazamiento no siempre se elige primer orden"))
     # --- script 21: forma tipo Kotidis
     cl = leer("modelo_kotidis_c_libre.csv").set_index("parametro")["libre"]
     rk = leer("modelo_kotidis_resumen.csv").set_index("modelo")
