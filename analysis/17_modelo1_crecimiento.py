@@ -18,7 +18,7 @@ BALANCE DIARIO (unidades normalizadas)
     beta produccion por celula no ligada al crecimiento (>= 0; obligarla a ser
          positiva evita que "esconda" la dilucion, como paso en el script 14)
     k    consumo por celula proporcional al lactato (>= 0), SIEMPRE activo
-    pH y pCO2 del dia anterior modulan alfa: alfa*(1 + a_p*pH' + a_c*pCO2'),
+    pH y pCO2 del dia anterior modulan la produccion de forma aditiva: alfa*dX+ + a_p*dX+*pH' + a_c*dX+*pCO2',
          con pH' y pCO2' estandarizados con los cultivos de entrenamiento.
          Linealizado asi el modelo sigue siendo lineal en los parametros.
 
@@ -147,9 +147,14 @@ def alfa_condicionada(s, p, d, mu, sd, lam, hasta_dia=4):
     A, y = matriz(s.loc[:hasta_dia], d, mu, sd)
     if len(y) == 0:
         return p[0]
-    x = A[:, 0] * (1 + p[3] * A[:, 3] / np.where(A[:, 0] == 0, 1, A[:, 0])
-                   + p[4] * A[:, 4] / np.where(A[:, 0] == 0, 1, A[:, 0]))
-    base = A[:, 1] * p[1] + A[:, 2] * p[2]
+    # Correccion de la auditoria de la tarea 5: el simulador usa
+    #   alfa*dX+ + a_p*dX+*pH' + a_c*dX+*pCO2'
+    # (la modulacion es aditiva y NO se multiplica por alfa). La version
+    # anterior estimaba alfa como si multiplicara tambien la modulacion, asi
+    # que contaba esos terminos dos veces y el modelo 1 quedaba en desventaja.
+    # Ahora la estimacion usa exactamente la ecuacion que se simula.
+    x = A[:, 0]
+    base = A[:, 1] * p[1] + A[:, 2] * p[2] + A[:, 3] * p[3] + A[:, 4] * p[4]
     a = (x @ (y - base) + lam * p[0]) / (x @ x + lam)
     return max(a, 0.0)
 

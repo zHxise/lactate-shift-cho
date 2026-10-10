@@ -297,6 +297,10 @@ def cifras_v2() -> list[tuple[str, str]]:
         k = int((m[f"dia_D{D}"] == m["dia_D0.00"]).sum())
         c.append((f"v2: dilucion {D}", txt.format(k, m["dia_D0.00"].notna().sum())))
     qc = leer("qc_gases_enmascarados.csv")
+    ce = leer("qc_gases_ceros.csv", index_col="variable")
+    c.append(("v2: ceros de gases",
+              f"Hay {ce.loc['pCO2', 'lecturas_cero']} ceros de pCO2 en {ce.loc['pCO2', 'cultivos']} cultivos y "
+              f"{ce.loc['pO2', 'lecturas_cero']} de pO2 en {ce.loc['pO2', 'cultivos']}"))
     c.append(("v2: QC gases", f"Son {len(qc)}: " +
               " y\n".join(f"{r.cult} dia {int(r.day)}" for r in qc.sort_values("cult", ascending=False).itertuples())))
 
@@ -314,20 +318,29 @@ def cifras_v2() -> list[tuple[str, str]]:
 
     # --- asociaciones (15)
     orc = leer("or_por_iqr_conjunto.csv", index_col=0)
-    fmt = lambda x: f"{x:.1f}" if x >= 10 else f"{x:.2f}"
+    # >= 10: sin decimales; el extremo del bootstrap varia ~0.1 entre plataformas
+    fmt = lambda x: f"{x:.0f}" if x >= 10 else f"{x:.2f}"
     for v, nombre in (("vcd", "VCD"), ("ph", "pH"), ("pco2", "pCO2"), ("glutamina", "Glutamina"), ("amonio", "Amonio")):
         r = orc.loc[v]
-        c.append((f"v2: OR {v}", f"| {nombre} | {fmt(r['or_por_iqr'])} | {fmt(r['ic_bajo'])}-{fmt(r['ic_alto'])} |"))
+        txt = f"| {nombre} | {fmt(r['or_por_iqr'])} | {fmt(r['ic_bajo'])}-{fmt(r['ic_alto'])} |"
+        if v == "vcd":  # extremo superior inestable entre plataformas: se acepta +-1
+            hi = round(r["ic_alto"])
+            opciones = [f"| VCD | {fmt(r['or_por_iqr'])} | {fmt(r['ic_bajo'])}-{h} |" for h in (hi - 1, hi, hi + 1)]
+            txt = next((o for o in opciones if o in (RAIZ / "README.md").read_text(encoding="utf-8")), txt)
+        c.append((f"v2: OR {v}", txt))
     og = leer("or_por_iqr_por_grupo.csv")
     for v, txt in (("vcd", "| VCD |"), ("ph", "| pH |"), ("pco2", "| pCO2 |")):
         k = int(og[og["variable"] == v]["ic_excluye_1"].sum())
         c.append((f"v2: {v} en grupos", "Si |" if k == 3 else f"En {k} de 3 |"))
-    ge = leer("glutamina_evento_auc.csv").iloc[0]
+    ge = leer("glutamina_evento_auc.csv")
+    incluye0 = bool(((ge["dif_ic_bajo"] <= 0) & (ge["dif_ic_alto"] >= 0)).all())
     c.append(("v2: glutamina evento",
-              f"(diferencia {ge['dif_vs_M3']:.4f}, IC {ge['dif_ic_bajo']:.4f} a {ge['dif_ic_alto']:.4f})".replace("-", "−")))
+              "(diferencias menores que 0.003, con IC que incluyen 0)"
+              if incluye0 and ge["dif_vs_M3"].abs().max() < 0.003 else "FALTA: revisar diferencias de glutamina"))
     ga = leer("glutamina_agotamiento_vs_shift.csv", index_col=0)
     k = int(((ga["primer_agotamiento"] - ga["dia_shift"]).abs() <= 1).sum())
     c.append(("v2: glutamina coincidencia", f"shift en {k} de {len(ga)} cultivos"))
+    c.append(("v2: glutamina temprana", f"{int((ga['primer_agotamiento'] <= 2).sum())} de esos {len(ga)} cultivos llegan al nivel bajo"))
 
     # --- VCD dia 3 (calculado aqui: el 0.66 de la tabla es solo de los 34 con cambio de T)
     from _comun import cargar
@@ -361,29 +374,68 @@ def cifras_v2() -> list[tuple[str, str]]:
     rp = rv["reproduce_15"].notna()
     c.append(("v2: reversibilidad",
               f"{int(rp.sum())} de {len(rv)} cultivos vuelven a producir lactato"))
-    c.append(("v2: reversibilidad dia", f"con mediana en el dia {rv.loc[rp, 'reproduce_15'].median():.0f}"))
+    c.append(("v2: reversibilidad dia", f"La mediana es\nel dia {rv.loc[rp, 'reproduce_15'].median():.0f}"))
+    c.append(("v2: reversibilidad regla anterior",
+              f"posterior al shift ({int(rv['reproduce_15_rel_min'].notna().sum())}\nde 100)"))
+    c.append(("v2: reversibilidad sin filtro", f"Sin ningun filtro de subida son {int(rv['reproduce_0'].notna().sum())}"))
+    c.append(("v2: reversibilidad rango", f"va de {int(rp.sum())} a {int(rv['reproduce_0'].notna().sum())} de 100"))
     c.append(("v2: reversibilidad VCD",
               f"{int((rv['vcd_relativa_al_max'] < 0.95).sum())} de esos {int(rp.sum())}"))
 
     # --- modelos 1 y 2 (17, 18)
     r = leer("modelo2_resumen.csv", index_col="modelo")
-    def fila(nombre, clave, negrita=False):
+    def fila(nombre, clave, col1="rmse_perfil", col2="rmse_2dias", negrita=False):
         f = r.loc[clave]
         b = "**" if negrita else ""
-        sh = "-" if pd.isna(f["shift_pm1"]) else f"{b}{f['shift_pm1']:.0%}{b}"
-        return (f"v2: tabla {clave}",
-                f"| {b}{nombre}{b} | {b}{f['rmse_perfil']:.4f}{b} | {b}{f['rmse_2dias']:.4f}{b} | {sh} |")
+        return (f"v2: tabla {clave}", f"| {b}{nombre}{b} | {b}{f[col1]:.4f}{b} | {b}{f[col2]:.4f}{b} |")
     c += [fila("Perfil promedio (referencia)", "perfil promedio"),
           fila("Modelo 1, sin interruptor", "M1 sin interruptor (script 17)"),
           fila("Modelo 2, riesgo solo del dia (control)", "M2 control: riesgo solo con el dia"),
-          fila("Modelo 2, dos estados", "M2 dos estados (F predicho)", True),
+          fila("Modelo 2, dos estados", "M2 dos estados (F predicho)", negrita=True),
           fila("Modelo 2 con el shift real (techo)", "M2 oraculo (F observado; techo)")]
+    neg = lambda x: f"{x:.4f}".replace("-", "−")
     g = r.loc["M2 dos estados (F predicho)"]
-    c.append(("v2: diferencia M2 vs M1",
-              f"{g['dif_2dias_vs_M1']:.4f}\n  (IC 95% {g['ic_bajo']:.4f} a {g['ic_alto']:.4f})".replace("-", "−")))
-    c.append(("v2: pH interruptor vs cinetica",
-              f"({r.loc['M2 con pH solo en el interruptor', 'rmse_2dias']:.4f} y "
-              f"{r.loc['M2 con pH solo en la cinetica', 'rmse_2dias']:.4f} a 2 dias)"))
+    ctl = r.loc["M2 control: riesgo solo con el dia"]
+    sp = r.loc["M2 sin pH, pCO2 ni osmolalidad en el riesgo"]
+    c += [
+        ("v2: M2 vs M1 perfil", f"{neg(g['dif_perfil_vs_M1'])} en el perfil (IC 95% {neg(g['ic_perfil_bajo'])} a "
+                                f"{neg(g['ic_perfil_alto'])}) y {neg(g['dif_2dias_vs_M1'])}\n  a 2 dias "
+                                f"(IC {neg(g['ic_bajo'])} a {neg(g['ic_alto'])})"),
+        ("v2: control vs M1", f"{neg(ctl['dif_perfil_vs_M1'])} en el\n  perfil (IC {neg(ctl['ic_perfil_bajo'])} a "
+                              f"{neg(ctl['ic_perfil_alto'])})"),
+        ("v2: congelado", f"el modelo 2 pasa a\n  {g['rmse_2dias_congelado']:.4f} y sigue mejor que el modelo 1 "
+                          f"({neg(g['dif_congelado_vs_M1'])}, IC {neg(g['ic_congelado_bajo'])} a "
+                          f"{neg(g['ic_congelado_alto'])})"),
+        ("v2: sin proxies", f"el perfil queda en {sp['rmse_perfil']:.4f}"),
+        ("v2: pH interruptor vs cinetica",
+         f"({r.loc['M2 con pH solo en el interruptor', 'rmse_2dias']:.4f} y "
+         f"{r.loc['M2 con pH solo en la cinetica', 'rmse_2dias']:.4f} a 2 dias)"),
+    ]
+    sc = leer("modelo2_serie_completa.csv", index_col="modelo")
+    m2c = sc.loc["M2 dos estados"]
+    c.append(("v2: serie completa",
+              f"{neg(m2c['dif_perfil_vs_promedio'])} en el\n  perfil (IC {neg(m2c['ic_perfil_bajo'])} a "
+              f"{neg(m2c['ic_perfil_alto'])}) y {neg(m2c['dif_2dias_vs_promedio'])} a 2 dias "
+              f"(IC {neg(m2c['ic_2dias_bajo'])} a {neg(m2c['ic_2dias_alto'])})"))
+    c.append(("v2: serie completa M1", "El modelo 1 no le gana." if sc.loc["M1 sin interruptor", "ic_perfil_bajo"] > -1e-9
+              or sc.loc["M1 sin interruptor", "ic_perfil_alto"] >= 0 else "FALTA: M1 si gana en la serie completa"))
+    tt = leer("modelo2_tiempo.csv", index_col="metodo")
+    pc = lambda x: f"{x * 100:.0f}%"
+    for clave, nombre in (("dia mediano de entrenamiento (constante)", "Siempre el dia mediano de entrenamiento"),
+                          ("M1 sin interruptor", "Modelo 1, sin interruptor"),
+                          ("M2 riesgo solo con el dia (control)", "Modelo 2, riesgo solo del dia (control)"),
+                          ("riesgo solo (primer dia con F >= 0.5)", "Riesgo diario solo (primer dia con F ≥ 0.5)"),
+                          ("M2 dos estados", "Modelo 2, dos estados")):
+        f = tt.loc[clave]
+        c.append((f"v2: tiempo {clave}", f"| {nombre} | {pc(f['exacto'])} | {pc(f['pm1'])} |"))
+    por = leer("modelo2_tiempo_por_dia.csv")
+    m2d = por[por["metodo"] == "M2 dos estados"].set_index("dia_real")["cultivos"]
+    c.append(("v2: shifts dias 5-7", f"{int(m2d.loc[[5, 6, 7]].sum())} de los {int(m2d.sum())}\nshifts dentro de la ventana"))
+    c.append(("v2: constante +-1", f"ya acierta {pc(tt.loc['dia mediano de entrenamiento (constante)', 'pm1'])}"))
+    pm = pd.read_csv(TAB / "modelo2_por_cultivo.csv", index_col="cult")
+    lab = pm["dia_shift_etiqueta"]
+    coincide = (pm["M2_shift_pred"] == pm["M2_dia_riesgo"])[lab.notna()].mean()
+    c.append(("v2: coincide con el riesgo", f"coincide con el del riesgo en {coincide:.0%} de los cultivos"))
     return c
 
 

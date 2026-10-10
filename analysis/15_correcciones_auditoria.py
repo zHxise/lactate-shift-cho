@@ -12,6 +12,13 @@ A. CONTROL DE CALIDAD DE GASES EN SANGRE
    cuartiles del dataset. Si es invalida se enmascaran pH, pCO2 y pO2 de esa
    fila (es una sola medicion del gasometro). Los huecos se rellenan hacia
    adelante como siempre (nunca con datos futuros).
+   Segunda regla (auditoria de la tarea 5): un 0 exacto en pCO2 o pO2 se trata
+   como lectura faltante de esa variable. Hay 89 ceros de pCO2 (40 cultivos) y
+   156 de pO2 (35 cultivos), en bloques de dias seguidos, mientras que el
+   valor no nulo mas bajo de pCO2 es ~0.09: no son minimos reales sino
+   lecturas fallidas o ausentes. La regla del pH no los ve (en 30 de los 89
+   ceros de pCO2 el pH falta) y una regla de IQR sobre la propia pCO2 tampoco
+   (su cerca inferior es negativa).
    Ademas, las razones de momios se reportan por IQR (RobustScaler) y no por
    desviacion estandar: un solo valor extremo infla la desviacion estandar
    pero casi no mueve el IQR.
@@ -65,15 +72,34 @@ GASES = ["pH", "pCO2", "pO2"]
 
 
 # ---------------------------------------------------------------- A
+CEROS = ["pCO2", "pO2"]  # variables donde un 0 exacto es lectura fallida
+
+
 def qc_gases(raw):
-    """Enmascara lecturas de gases invalidas (regla de 3 IQR sobre el pH)."""
+    """Enmascara lecturas de gases invalidas.
+
+    1) pH a mas de 3 IQR de los cuartiles -> se enmascaran pH, pCO2 y pO2 de la fila.
+    2) 0 exacto en pCO2 o pO2 -> se enmascara solo esa variable.
+    Las dos reglas no usan etiquetas; las cercas de la regla 1 se calculan con
+    todo el dataset (transductivo pero sin informacion del desenlace).
+    """
     raw = raw.copy()
     q1, q3 = raw["pH"].quantile([0.25, 0.75])
     iqr = q3 - q1
     malas = (raw["pH"] < q1 - 3 * iqr) | (raw["pH"] > q3 + 3 * iqr)
     registro = raw.loc[malas, ["cult", "day"] + GASES].copy()
     raw.loc[malas, GASES] = np.nan
+    for g in CEROS:
+        raw.loc[raw[g] == 0, g] = np.nan
     return raw, registro
+
+
+def resumen_ceros(raw):
+    """Cuantas lecturas en 0 exacto hay por variable (antes de enmascarar)."""
+    return pd.DataFrame([{"variable": g, "lecturas_cero": int((raw[g] == 0).sum()),
+                          "cultivos": int(raw.loc[raw[g] == 0, "cult"].nunique()),
+                          "con_pH_faltante": int(raw.loc[raw[g] == 0, "pH"].isna().sum())}
+                         for g in CEROS])
 
 
 def modelo_robusto():
@@ -196,6 +222,20 @@ def temperatura(raw, et):
             "reg": reg, "ic_coef_tshift": ic_t, "g_crudo": crudo, "g_ajustado": aj, "g_vcd": traslape}
 
 
+def cambios_junto_al_lactato(raw_l):
+    """Correlacion (Spearman) entre el cambio diario del lactato y el de cada variable,
+    dentro de cada cultivo. Si pH o pCO2 se mueven junto con el lactato (por ejemplo,
+    porque el control de pH responde al acido), sus razones de momios pueden reflejar
+    en parte la propia dinamica del lactato aunque el lactato no entre al modelo."""
+    r = raw_l.sort_values(["cult", "day"])
+    d = r.groupby("cult")[["[Lactate]", "pH", "pCO2", "Osmolality", "VCD"]].diff()
+    filas = []
+    for v in ("pH", "pCO2", "Osmolality", "VCD"):
+        ok = d[["[Lactate]", v]].dropna()
+        filas.append({"variable": v, "pares": len(ok), "rho_spearman": ok.corr("spearman").iloc[0, 1]})
+    return pd.DataFrame(filas)
+
+
 def main() -> None:
     raw = cargar("Raw Data")
     et = pd.read_csv(TABLAS / "etiquetas_evento_tasa.csv", index_col="cult")
@@ -205,6 +245,9 @@ def main() -> None:
     print("lecturas enmascaradas (regla de 3 IQR sobre el pH):")
     print(registro.to_string(index=False))
     registro.to_csv(TABLAS / "qc_gases_enmascarados.csv", index=False)
+    ceros = resumen_ceros(raw)
+    print(ceros.to_string(index=False))
+    ceros.to_csv(TABLAS / "qc_gases_ceros.csv", index=False)
 
     pp = est.persona_periodo(raw_l, et, adelanto=1)
     dia = [f"d{k}" for k in range(3, 12)] + ["d12p"]
@@ -258,6 +301,11 @@ def main() -> None:
     print(por_grupo.pivot(index="variable", columns="grupo", values="ic_excluye_1").to_string())
     conjunto.round(3).to_csv(TABLAS / "or_por_iqr_conjunto.csv")
     por_grupo.round(3).to_csv(TABLAS / "or_por_iqr_por_grupo.csv", index=False)
+
+    cj = cambios_junto_al_lactato(raw_l)
+    print("\ncambio diario de cada variable vs cambio diario del lactato (dentro de cultivo):")
+    print(cj.round(2).to_string(index=False))
+    cj.round(3).to_csv(TABLAS / "cambios_junto_al_lactato.csv", index=False)
 
     print("\n=== D. Temperatura: contra el azar y ajustada por crecimiento ===")
     t = temperatura(raw, et)

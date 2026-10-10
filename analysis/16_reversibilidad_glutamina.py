@@ -7,9 +7,15 @@ A. REVERSIBILIDAD (diagnostico de la estructura 3 de la propuesta de modelos)
    vuelven a PRODUCIR lactato de forma sostenida despues del shift, esa idea
    pierde sustento. Se usa la misma logica que define el shift, al reves:
    re-produccion = tasa especifica q > 0 durante 2 intervalos seguidos
-   despues del shift Y el lactato suavizado sube al menos 15% desde su minimo
-   posterior al shift (mismo filtro de ruido que la definicion del evento).
-   Se reporta tambien con 0% (sin filtro) como sensibilidad, cuantos dias
+   despues del shift Y el lactato sube desde su minimo posterior al shift al
+   menos 15% de la AMPLITUD del propio cultivo (maximo - minimo de la serie
+   suavizada), confirmado en los valores crudos.
+   Correccion de la auditoria de la tarea 5: la version anterior pedia una
+   subida de 15% RELATIVA al minimo. Con datos min-max ese minimo es casi
+   cero (mediana 0.010), asi que 15% de el es ruido (~0.0015) y ademas
+   depende del desplazamiento desconocido de la normalizacion. La amplitud
+   del cultivo no depende de ese desplazamiento. La regla anterior y la de 0%
+   (sin filtro) se conservan como sensibilidad, junto con cuantos dias
    despues del shift ocurre, y si el cultivo seguia creciendo o ya iba en
    declive (la re-produccion tardia en declive es otro fenomeno, no el mismo
    interruptor que regresa).
@@ -58,20 +64,33 @@ PERCENTILES = (5, 10, 20)
 
 
 # ---------------------------------------------------------------- A
-def reproduccion(dias, lac, vcd, dia_shift, subida_min):
-    """Primer dia (despues del shift) de re-produccion sostenida, o NaN."""
+def reproduccion(dias, lac, vcd, dia_shift, subida_min, base="amplitud"):
+    """Primer dia (despues del shift) de re-produccion sostenida, o NaN.
+
+    base="amplitud": la subida se mide como fraccion de (max - min) del cultivo
+                     y debe verse tambien en los valores crudos (regla principal).
+    base="minimo":   regla anterior, subida relativa al minimo (sensibilidad).
+    """
     d_ini, q = tasa.tasas(dias, lac, vcd, 0.0)
     _, L = regularize(dias, lac)
     Ls = smooth(L, tasa.SUAVIZADO)
+    amplitud = np.nanmax(Ls) - np.nanmin(Ls)
     i0 = int(np.searchsorted(d_ini, dia_shift)) + 1  # primer intervalo ya en consumo
     for i in range(i0, len(q) - 1):
         if q[i] > 0 and q[i + 1] > 0:
             minimo = np.nanmin(Ls[i0:i + 1])
-            if minimo <= 0 and subida_min > 0:
-                continue
-            subida = (np.nanmax(Ls[i + 1:i + 3]) - minimo) / max(minimo, 1e-9)
-            if subida >= subida_min:
-                return float(d_ini[i])
+            if base == "minimo":
+                if minimo <= 0 and subida_min > 0:
+                    continue
+                if (np.nanmax(Ls[i + 1:i + 3]) - minimo) / max(minimo, 1e-9) >= subida_min:
+                    return float(d_ini[i])
+            else:
+                umbral = subida_min * amplitud
+                suave = np.nanmax(Ls[i + 1:i + 3]) - minimo
+                # en crudo: el maximo de los 2 dias siguientes contra el minimo crudo desde el shift
+                crudo = np.nanmax(L[i + 1:i + 3]) - np.nanmin(L[i0:i + 1])
+                if suave >= umbral and crudo >= umbral:
+                    return float(d_ini[i])
     return np.nan
 
 
@@ -84,8 +103,9 @@ def parte_a(raw, et):
         dias, lac, vcd = g["day"].to_numpy(), g["[Lactate]"].to_numpy(), g["VCD"].to_numpy()
         ds = et.loc[cult, "dia"]
         fila = {"cult": cult, "dia_shift": ds, "dias_observados_despues": dias.max() - ds}
-        for umbral in (0.15, 0.0):
-            fila[f"reproduce_{int(umbral * 100)}"] = reproduccion(dias, lac, vcd, ds, umbral)
+        fila["reproduce_15"] = reproduccion(dias, lac, vcd, ds, 0.15)               # principal
+        fila["reproduce_15_rel_min"] = reproduccion(dias, lac, vcd, ds, 0.15, "minimo")  # regla anterior
+        fila["reproduce_0"] = reproduccion(dias, lac, vcd, ds, 0.0, "minimo")       # sin filtro
         dr = fila["reproduce_15"]
         if np.isfinite(dr):
             # crecimiento en ese momento: VCD del dia de re-produccion vs su maximo previo
@@ -127,9 +147,14 @@ def main() -> None:
     a = parte_a(raw, et)
     n = len(a)
     r15, r0 = a["reproduce_15"].notna(), a["reproduce_0"].notna()
+    rrel = a["reproduce_15_rel_min"].notna()
     print(f"cultivos con shift: {n}")
-    print(f"vuelven a producir lactato de forma sostenida (>=2 dias, subida >=15%): {int(r15.sum())} "
-          f"({r15.mean():.0%}); sin filtro de 15%: {int(r0.sum())} ({r0.mean():.0%})")
+    print(f"vuelven a producir lactato (>=2 intervalos, subida >=15% de la amplitud, confirmada en crudo): "
+          f"{int(r15.sum())} ({r15.mean():.0%})")
+    print(f"  sensibilidad: regla anterior (15% del minimo) {int(rrel.sum())}; sin filtro {int(r0.sum())}")
+    largo = a["dias_observados_despues"] >= 8
+    print(f"  con >= 8 dias de seguimiento despues del shift: {int(r15[largo].sum())} de {int(largo.sum())} "
+          f"({r15[largo].mean():.0%})")
     dif = (a.loc[r15, "reproduce_15"] - a.loc[r15, "dia_shift"])
     print("dias entre el shift y la re-produccion:", dif.value_counts().sort_index().to_dict())
     print("VCD en ese momento / su maximo previo (1 = sigue en el maximo; <1 = ya en declive): "

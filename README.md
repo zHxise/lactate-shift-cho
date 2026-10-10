@@ -21,10 +21,11 @@ Este repositorio tiene dos partes:
 
 En corto: el momento del shift se asocia sobre todo con el crecimiento
 temprano, y ademas con pH y pCO2. Un modelo de riesgo diario sin variables de
-lactato anticipa bien los shifts tempranos y mal los tardios. Un modelo de dos
-estados, con la transicion dada por ese riesgo, describe el perfil de lactato
-mejor que uno sin cambio de estado. Todo son asociaciones en datos
-normalizados, con las limitaciones que se detallan abajo.
+lactato anticipa bien los shifts tempranos y mal los tardios. Usar ese riesgo
+como interruptor de una cinetica de lactato mejora el ajuste del perfil sobre
+una cinetica sin interruptor; la estructura de dos estados por si sola no
+aporta nada. Todo son asociaciones en datos normalizados, con las
+limitaciones que se detallan abajo.
 
 ---
 
@@ -252,9 +253,14 @@ excluyen porque nunca acumulan lactato. Dia del shift: mediana 6 (15 cultivos
 en el dia 4, 21 en el 5, 31 en el 6, 22 en el 7, 6 en el 8, 4 en el 9 y 1 en
 el 11).
 
-Control de calidad de gases: las lecturas con pH a mas de 3 rangos
-intercuartilicos se enmascaran (pH, pCO2 y pO2 de ese dia). Son 2: C75 dia 2
-y C101 dia 1.
+Control de calidad de gases, con dos reglas que no usan la etiqueta:
+
+- Las lecturas con pH a mas de 3 rangos intercuartilicos se enmascaran (pH,
+  pCO2 y pO2 de ese dia). Son 2: C75 dia 2 y C101 dia 1.
+- Un 0 exacto en pCO2 o pO2 se trata como lectura faltante. Hay 89 ceros de
+  pCO2 en 40 cultivos y 156 de pO2 en 35, en bloques de dias seguidos,
+  mientras que el valor no nulo mas bajo de pCO2 ronda 0.09: son lecturas
+  fallidas, no minimos reales.
 
 ### Modelo de riesgo diario
 
@@ -270,10 +276,10 @@ agrupada por cultivo: todas las filas de un cultivo caen en el mismo fold.
 | Modelo | AUC fuera de fold |
 |---|---|
 | Solo el dia | 0.815 |
-| Dia + mediciones | **0.942** (IC 95% 0.924-0.960) |
+| Dia + mediciones | **0.943** (IC 95% 0.925-0.961) |
 
-Mejora: +0.127 (IC 95% +0.099 a +0.158, bootstrap por cultivo). Con una
-alarma en probabilidad ≥0.5, el modelo marca el dia exacto del shift en 53 de
+Mejora: +0.128 (IC 95% +0.099 a +0.159, bootstrap por cultivo). Con una
+alarma en probabilidad ≥0.5, el modelo marca el dia exacto del shift en 56 de
 100 cultivos.
 
 El "solo el dia" es el rival correcto: el riesgo sube con los dias en
@@ -284,11 +290,11 @@ Donde funciona y donde no:
 
 | Dia | Eventos | En riesgo | AUC dentro del dia |
 |---|---|---|---|
-| 4 | 15 | 104 | 0.954 |
-| 5 | 21 | 89 | 0.952 |
-| 6 | 31 | 68 | 0.875 |
-| 7 | 22 | 37 | 0.670 |
-| 8 | 6 | 15 | 0.389 |
+| 4 | 15 | 104 | 0.958 |
+| 5 | 21 | 89 | 0.961 |
+| 6 | 31 | 68 | 0.879 |
+| 7 | 22 | 37 | 0.676 |
+| 8 | 6 | 15 | 0.407 |
 
 **Anticipa bien los shifts tempranos y mal los tardios.** El AUC dentro de un
 dia compara solo cultivos que siguen en riesgo ese dia, asi que no lo infla
@@ -297,15 +303,16 @@ el efecto del calendario.
 ### Que se asocia con el momento del shift
 
 Razon de momios por rango intercuartilico, modelo conjunto (IC 95% por
-bootstrap de cultivos). Una razon mayor que 1 adelanta el shift; menor que 1
+bootstrap de cultivos; el extremo superior de la VCD es inestable y puede
+variar en una unidad entre computadoras). Una razon mayor que 1 adelanta el shift; menor que 1
 lo retrasa.
 
 | Variable | Razon de momios | IC 95% | ¿Se sostiene en los 3 grupos de volumen? |
 |---|---|---|---|
-| VCD | 16.8 | 12.2-49.6 | Si |
-| pH | 0.16 | 0.07-0.27 | Si |
-| pCO2 | 0.31 | 0.12-0.79 | En 2 de 3 |
-| Glutamina | 1.39 | 1.15-1.90 | No (cambia de signo) |
+| VCD | 15 | 11-45 | Si |
+| pH | 0.16 | 0.08-0.29 | Si |
+| pCO2 | 0.22 | 0.08-0.60 | Si |
+| Glutamina | 1.50 | 1.23-2.12 | No (cambia de signo) |
 | Amonio | 0.97 | 0.45-0.99 | No |
 
 ![Asociaciones](docs/figuras/fig3_asociaciones.png)
@@ -313,16 +320,21 @@ lo retrasa.
 - **El crecimiento es la asociacion mas fuerte.** La VCD del dia 3, sola,
   explica R² 0.46 del dia del shift en los 100 cultivos con shift (0.66 en
   los 34 con cambio de temperatura y 0.29 en los 65 sin el).
-- **pH y pCO2 mas altos se asocian con un shift mas tardio.** No son un
-  reflejo del lactato acumulado (el lactato no entra al modelo), pero el
-  dataset no dice que controla el pH (CO2 o base), asi que no se puede
-  separar uno de otro.
+- **pH y pCO2 mas altos se asocian con un shift mas tardio**, pero no se
+  pueden leer como causas. Dentro de cada cultivo, su cambio diario se mueve
+  con el del lactato (Spearman −0.38 para pH y −0.49 para pCO2), quiza por el
+  control de pH respondiendo al acido; el dataset no dice si el pH se
+  controla con CO2 o con base. Aunque el lactato no entra al modelo, estas
+  razones de momios pueden reflejar en parte la propia dinamica del
+  lactato.
 - **Glutamina y amonio no son robustos.** La glutamina sube con el tiempo en
   la mayoria de los cultivos, que no es el patron de agotamiento tipico (una
-  linea GS-CHO lo explicaria, pero es inferencia). Como evento de
-  agotamiento, con el umbral fijado solo con datos de entrenamiento, no
-  mejora el AUC (diferencia −0.0002, IC −0.0009 a 0.0006) y coincide con el
-  shift en 8 de 31 cultivos, al nivel del azar.
+  linea GS-CHO lo explicaria, pero es inferencia). Un nivel bajo de
+  glutamina, con el umbral fijado solo con datos de entrenamiento, no mejora
+  el AUC (diferencias menores que 0.003, con IC que incluyen 0) y coincide con
+  el shift en 8 de 31 cultivos, al nivel del azar. Ojo: no es una prueba de
+  agotamiento: 20 de esos 31 cultivos llegan al nivel bajo en los dias 1-2,
+  es decir, empiezan bajos; no caen.
 
 Son asociaciones, no causas.
 
@@ -343,12 +355,18 @@ pueden separar.
 
 ### El shift es reversible
 
-55 de 100 cultivos vuelven a producir lactato de forma sostenida despues del
-shift (q positiva dos intervalos y subida ≥15%), con mediana en el dia 12. En
-39 de esos 55 la VCD ya esta por debajo del 95% de su maximo: la
-re-produccion ocurre sobre todo en el declive del cultivo. Un modelo con un
-cambio irreversible describe bien la fase de crecimiento, pero no el cultivo
-completo.
+43 de 100 cultivos vuelven a producir lactato de forma sostenida despues del
+shift: q positiva dos intervalos seguidos y una subida de al menos 15% de la
+amplitud del propio cultivo, confirmada en los valores crudos. La mediana es
+el dia 11. En 31 de esos 43 la VCD ya esta por debajo del 95% de su maximo:
+la re-produccion ocurre sobre todo en el declive del cultivo.
+
+La cifra depende de la definicion: va de 43 a 65 de 100. Una version
+anterior pedia una subida de 15% relativa al minimo posterior al shift (55
+de 100), pero en datos min-max ese minimo es casi cero y 15% de el es ruido.
+Sin ningun filtro de subida son 65. En cualquier caso la re-produccion
+tardia es frecuente: un modelo con un cambio irreversible describe bien la
+fase de crecimiento, pero no el cultivo completo.
 
 ### Modelos mecanisticos del perfil de lactato
 
@@ -356,44 +374,81 @@ Dos estructuras, comparadas sobre la misma ventana (hasta que la VCD cae por
 debajo del 85% de su maximo), con validacion agrupada por cultivo:
 
 - **Modelo 1, sin interruptor.** El lactato se produce en proporcion al
-  crecimiento, modulado por pH y pCO2, y se consume en proporcion al lactato
-  y a las celulas:
-  ΔL = α·ΔX⁺·(1 + a_p·pH' + a_c·pCO2') + β·IVCD − k·L·IVCD.
+  crecimiento, con un ajuste aditivo por pH y pCO2 del dia anterior, y se
+  consume en proporcion al lactato y a las celulas:
+  ΔL = α·ΔX⁺ + a_p·ΔX⁺·pH' + a_c·ΔX⁺·pCO2' + β·IVCD − k·L·IVCD.
   Es la hipotesis nula: no hay un cambio de estado.
 - **Modelo 2, dos estados.** La misma cinetica, pero la produccion se apaga
-  segun la probabilidad acumulada de haber hecho el shift, F, que sale del
-  modelo de riesgo diario ajustado solo con los cultivos de entrenamiento.
+  y el consumo se enciende segun F, la probabilidad acumulada de haber hecho
+  el shift. F sale del modelo de riesgo diario ajustado solo con los
+  cultivos de entrenamiento.
 
 En los dos, el parametro de produccion α de cada cultivo se estima con sus
 dias 1-4 y se encoge hacia el valor de la poblacion (Bayes empirico).
 
-| Modelo | RMSE del perfil | RMSE a 2 dias | Shift simulado a ±1 dia |
-|---|---|---|---|
-| Perfil promedio (referencia) | 0.0636 | 0.0428 | - |
-| Modelo 1, sin interruptor | 0.0645 | 0.0440 | 62% |
-| Modelo 2, riesgo solo del dia (control) | 0.0598 | 0.0421 | 79% |
-| **Modelo 2, dos estados** | **0.0509** | **0.0356** | **94%** |
-| Modelo 2 con el shift real (techo) | 0.0481 | 0.0339 | 100% |
+**Los dos modelos usan la VCD medida en todo el horizonte**, asi que son
+reconstrucciones explicativas del perfil, no pronosticos. El "error a 2 dias"
+mide cuanto se aleja la reconstruccion dos dias despues de partir de un
+valor observado; para un pronostico real habria que pronosticar tambien el
+crecimiento.
+
+| Modelo | RMSE del perfil | RMSE a 2 dias |
+|---|---|---|
+| Perfil promedio (referencia) | 0.0636 | 0.0428 |
+| Modelo 1, sin interruptor | 0.0580 | 0.0414 |
+| Modelo 2, riesgo solo del dia (control) | 0.0567 | 0.0409 |
+| **Modelo 2, dos estados** | **0.0475** | **0.0345** |
+| Modelo 2 con el shift real (techo) | 0.0446 | 0.0329 |
 
 ![Comparacion de modelos](docs/figuras/fig5_comparacion_modelos.png)
 
-- El modelo 1 no le gana al perfil promedio.
-- El modelo 2 si, y la diferencia a 2 dias contra el modelo 1 es −0.0084
-  (IC 95% −0.0102 a −0.0065). Cumple la regla de decision fijada antes de
-  correrlo.
-- El control alimenta el interruptor con un riesgo que solo conoce el dia.
-  La forma de dos estados ayuda algo por si sola (mejor perfil completo y
-  79% de shifts a ±1 dia), pero a 2 dias queda practicamente igual que el
-  modelo 1 (−0.0019, IC −0.0039 a 0.0001). La ventaja del modelo 2 viene
-  sobre todo de las mediciones del cultivo.
+- **El interruptor informado por las mediciones mejora el ajuste.** Modelo 2
+  menos modelo 1: −0.0105 en el perfil (IC 95% −0.0130 a −0.0083) y −0.0069
+  a 2 dias (IC −0.0082 a −0.0058). Cumple la regla de decision fijada antes
+  de correrlo.
+- **La estructura de dos estados por si sola no aporta.** Con un riesgo que
+  solo conoce el dia, el modelo 2 queda igual que el modelo 1: −0.0013 en el
+  perfil (IC −0.0045 a 0.0020). La ventaja viene de las mediciones que
+  alimentan el interruptor (sobre todo la VCD), no de tener dos estados. Lo
+  que los datos sostienen es "conocer cuando cambia el cultivo mejora la
+  cinetica", no "hace falta un interruptor regulado".
+- **No depende de mediciones futuras.** En el error a 2 dias, el segundo
+  paso usaba el riesgo del dia siguiente, calculado con mediciones de ese
+  dia. Congelando esas mediciones en el dia de partida, el modelo 2 pasa a
+  0.0362 y sigue mejor que el modelo 1 (−0.0052, IC −0.0063 a −0.0041).
+- **No depende de pH, pCO2 ni osmolalidad**, las variables que se mueven con
+  el lactato: sin ellas en el riesgo, el perfil queda en 0.0471.
 - Donde va el pH (en el interruptor o en la cinetica) no se puede decidir:
-  las dos variantes dan casi lo mismo (0.0357 y 0.0362 a 2 dias).
+  las dos variantes dan casi lo mismo (0.0348 y 0.0350 a 2 dias).
+- **En la serie completa**, incluido el declive y la re-produccion tardia, el
+  modelo 2 todavia le gana al perfil promedio, pero por poco: −0.0069 en el
+  perfil (IC −0.0123 a −0.0020) y −0.0020 a 2 dias (IC −0.0038 a −0.0001).
+  El modelo 1 no le gana.
 
-**Alcance.** El modelo 2 es explicativo, no un pronostico completo: usa la
-VCD medida en todo el horizonte. Para anticipar el perfil en planta habria
-que pronosticar tambien el crecimiento. Ademas, el resultado se ve muy bien,
-y por eso esta pendiente de una auditoria independiente antes de darlo por
-bueno.
+**El dia del shift.** Acertar a ±1 dia es un criterio flojo: 70 de los 95
+shifts dentro de la ventana caen en los dias 5 a 7, y predecir siempre el
+dia mediano ya acierta 74%. Por eso se reporta tambien el dia exacto, y un
+cultivo sin shift simulado cuenta como fallo:
+
+| Metodo | Dia exacto | A ±1 dia |
+|---|---|---|
+| Siempre el dia mediano de entrenamiento | 29% | 74% |
+| Modelo 1, sin interruptor | 34% | 73% |
+| Modelo 2, riesgo solo del dia (control) | 27% | 79% |
+| Riesgo diario solo (primer dia con F ≥ 0.5) | 59% | 94% |
+| Modelo 2, dos estados | 51% | 94% |
+
+El modelo 2 no fecha el shift mejor que el riesgo diario por si solo: su dia
+simulado coincide con el del riesgo en 65% de los cultivos. El momento lo
+aporta el modelo de riesgo; la cinetica aporta la forma del perfil.
+
+**Revision independiente.** Estos resultados ya incorporan una auditoria
+independiente de los scripts 15 a 18. Encontro dos errores en la estimacion
+de α, uno que dejaba en desventaja al modelo 1 y otro al modelo 2; el
+segundo paso del error a 2 dias usando mediciones futuras; el criterio de
+±1 dia demasiado flojo; los ceros de pCO2 y pO2, y la regla de
+re-produccion relativa a un minimo casi nulo. Todo esta corregido arriba.
+No encontro fuga de la etiqueta.
 
 ## Limitaciones
 
@@ -409,6 +464,9 @@ bueno.
   sobreajuste; por eso las comparaciones se hacen contra rivales fuertes, con
   intervalos por bootstrap de cultivos y reglas de decision fijadas antes.
 - **El modelo de riesgo falla en los shifts tardios** (dia 7 en adelante).
+- **Los modelos mecanisticos son explicativos**: usan la VCD medida. En los
+  cultivos tipicos subestiman la velocidad con la que cae el lactato despues
+  del shift.
 - **Sin regimen de alimentacion ni dilucion.** La tasa especifica la ignora;
   es robusta hasta una dilucion de alrededor de 3% diario.
 - **Sin marcadores redox** (NAD+/NADH, piruvato): las asociaciones no

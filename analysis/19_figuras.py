@@ -88,12 +88,13 @@ def simulaciones(raw_l, et, S, cultivos_ej):
         p1, _, _ = m1.ajustar(S, tr, 0.0, mu, sd)
         lam1 = m1.lambda_pooling(S, tr, p1, 0.0, mu, sd)
         p2 = m2.ajustar2(S, tr, et, mu, sd, True)
+        lam2 = m2.lambda_pooling2(S, tr, et, p2, mu, sd, True)
         Fp = m2.riesgo_predicho(ppc, pp[pp["cult"].isin(tr)], m3, te_ej)
         for c in te_ej:
             s = S[c]
             sim1 = m1.simular(s, p1, m1.alfa_condicionada(s, p1, 0.0, mu, sd, lam1), 0.0, mu, sd)
             F = Fp[c].reindex(s.index).fillna(0).to_numpy()
-            sim2 = m2.simular2(s, F, p2, m2.alfa_cond2(s, F, p2, mu, sd, lam1, True), mu, sd, True)
+            sim2 = m2.simular2(s, F, p2, m2.alfa_cond2(s, F, p2, mu, sd, lam2, True), mu, sd, True)
             out[c] = pd.DataFrame({"obs": s["L"], "m1": sim1, "m2": sim2, "F": F}, index=s.index)
     return out
 
@@ -220,38 +221,42 @@ def fig_temperatura(raw, et):
 
 
 def fig_modelos():
-    r = pd.read_csv(TABLAS / "modelo2_resumen.csv")
-    r = r[r["modelo"].isin(["perfil promedio", "M1 sin interruptor (script 17)", "M2 dos estados (F predicho)",
-                            "M2 control: riesgo solo con el dia", "M2 oraculo (F observado; techo)"])]
-    # orden de arriba a abajo: referencias, control, modelo, techo
-    orden = ["perfil promedio", "M1 sin interruptor (script 17)", "M2 control: riesgo solo con el dia",
-             "M2 dos estados (F predicho)", "M2 oraculo (F observado; techo)"]
-    r = r.set_index("modelo").loc[[m for m in orden if m in set(r["modelo"])]].reset_index()
-    etiquetas = {"perfil promedio": "perfil promedio", "M1 sin interruptor (script 17)": "modelo 1 (sin interruptor)",
-                 "M2 dos estados (F predicho)": "modelo 2 (interruptor predicho)",
-                 "M2 control: riesgo solo con el dia": "modelo 2, riesgo solo del día (control)",
-                 "M2 oraculo (F observado; techo)": "techo (interruptor perfecto)"}
-    col = {"perfil promedio": GRIS, "M1 sin interruptor (script 17)": GRIS,
-           "M2 dos estados (F predicho)": AZUL, "M2 control: riesgo solo con el dia": "#a9a8a2",
-           "M2 oraculo (F observado; techo)": "#86b6ef"}
-    fig, (a, b) = plt.subplots(1, 2, figsize=(10, 3.2))
-    y = np.arange(len(r))[::-1]
-    for yi, (_, f) in zip(y, r.iterrows()):
-        a.plot([0, f["rmse_2dias"]], [yi, yi], color=col[f["modelo"]], lw=2)
-        a.plot(f["rmse_2dias"], yi, "o", color=col[f["modelo"]], ms=8)
-        a.text(f["rmse_2dias"] + 0.0008, yi, f"{f['rmse_2dias']:.4f}", va="center", fontsize=8, color=TINTA)
-        if pd.notna(f["shift_pm1"]):
-            b.plot([0, f["shift_pm1"] * 100], [yi, yi], color=col[f["modelo"]], lw=2)
-            b.plot(f["shift_pm1"] * 100, yi, "o", color=col[f["modelo"]], ms=8)
-            b.text(f["shift_pm1"] * 100 + 1.5, yi, f"{f['shift_pm1']:.0%}", va="center", fontsize=8, color=TINTA)
-    for ax in (a, b):
-        ax.set_yticks(y)
-        ax.set_yticklabels([etiquetas[m] for m in r["modelo"]])
-    b.set_yticklabels([])
-    a.set_xlabel("error del pronóstico a 2 días (RMSE, menor es mejor)")
-    b.set_xlabel("shift simulado a ±1 día del real (%)")
-    a.set_xlim(0, 0.05); b.set_xlim(0, 110)
-    fig.tight_layout()
+    """Panel a: error del perfil por modelo. Panel b: acierto del dia del shift contra referencias."""
+    r = pd.read_csv(TABLAS / "modelo2_resumen.csv").set_index("modelo")
+    filas_a = [("perfil promedio", "perfil promedio", GRIS),
+               ("M1 sin interruptor (script 17)", "modelo 1 (sin interruptor)", GRIS),
+               ("M2 control: riesgo solo con el dia", "modelo 2, riesgo solo del día (control)", "#a9a8a2"),
+               ("M2 dos estados (F predicho)", "modelo 2 (interruptor predicho)", AZUL),
+               ("M2 oraculo (F observado; techo)", "techo (interruptor perfecto)", "#86b6ef")]
+    t = pd.read_csv(TABLAS / "modelo2_tiempo.csv").set_index("metodo")
+    filas_b = [("dia mediano de entrenamiento (constante)", "siempre el día mediano", GRIS),
+               ("M1 sin interruptor", "modelo 1", GRIS),
+               ("M2 riesgo solo con el dia (control)", "modelo 2, riesgo solo del día", "#a9a8a2"),
+               ("riesgo solo (primer dia con F >= 0.5)", "riesgo diario solo (F ≥ 0.5)", NARANJA),
+               ("M2 dos estados", "modelo 2", AZUL)]
+    fig, (a, b) = plt.subplots(1, 2, figsize=(11, 3.4), gridspec_kw={"wspace": 0.9})
+    y = np.arange(len(filas_a))[::-1]
+    for yi, (k, _, c) in zip(y, filas_a):
+        v = r.loc[k, "rmse_perfil"]
+        a.plot([0, v], [yi, yi], color=c, lw=2)
+        a.plot(v, yi, "o", color=c, ms=8)
+        a.text(v + 0.0012, yi, f"{v:.4f}", va="center", fontsize=8, color=TINTA)
+    a.set_yticks(y); a.set_yticklabels([e for _, e, _ in filas_a])
+    a.set_xlim(0, 0.075)
+    a.set_xlabel("error del perfil de lactato (RMSE, menor es mejor)")
+    y = np.arange(len(filas_b))[::-1]
+    for yi, (k, _, c) in zip(y, filas_b):
+        ex, pm = t.loc[k, "exacto"] * 100, t.loc[k, "pm1"] * 100
+        b.plot([ex, pm], [yi, yi], color=c, lw=2, alpha=0.5)
+        b.plot(ex, yi, "o", color=c, ms=8, label="día exacto" if yi == y[0] else None)
+        b.plot(pm, yi, "o", mfc="#fcfcfb", mec=c, mew=2, ms=8, label="a ±1 día" if yi == y[0] else None)
+        b.text(pm + 3.5, yi, f"{ex:.0f}% / {pm:.0f}%", va="center", fontsize=8, color=TINTA)
+    b.set_yticks(y); b.set_yticklabels([e for _, e, _ in filas_b])
+    b.set_xlim(0, 120)
+    b.set_xlabel(f"cultivos con el shift acertado (%, n = {int(t['cultivos'].iloc[0])})")
+    b.legend(frameon=False, fontsize=8, loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=2)
+    fig.text(0.5, -0.04, "Fuera de fold, con la VCD medida (reconstrucción explicativa, no pronóstico). "
+             "Un cultivo sin shift simulado cuenta como fallo.", ha="center", color=TINTA2, fontsize=8)
     fig.savefig(FIGURAS / "fig5_comparacion_modelos.png")
     plt.close(fig)
 
