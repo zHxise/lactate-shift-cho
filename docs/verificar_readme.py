@@ -455,6 +455,11 @@ def cifras_v2() -> list[tuple[str, str]]:
     c.append(("v20: A pred", f"con F predicho ({neg(a2['dif'])}, IC {neg(a2['ic_bajo'])} a {neg(a2['ic_alto'])})"))
     c.append(("v20: B", f"(+{b1['dif']:.4f}, IC {b1['ic_bajo']:.4f} a {b1['ic_alto']:.4f})"))
     c.append(("v20: control", f"(+{cc['dif']:.4f} en el perfil, IC {cc['ic_bajo']:.4f} a {cc['ic_alto']:.4f})"))
+    # --- script 21: forma tipo Kotidis
+    cl = leer("modelo_kotidis_c_libre.csv").set_index("parametro")["libre"]
+    rk = leer("modelo_kotidis_resumen.csv").set_index("modelo")
+    c.append(("v21: c libre", f"sale negativo ({cl['c']:.3f})".replace("-", "−")))
+    c.append(("v21: igual a M1", f"El modelo queda igual al modelo 1 ({rk.loc['tipo Kotidis (disparador: lactato)', 'rmse_perfil']:.4f})"))
     return c
 
 

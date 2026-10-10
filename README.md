@@ -462,6 +462,21 @@ fijadas antes de correrlos:
 - Con el consumo saturable, el control con riesgo solo del dia sigue lejos
   del modelo 2 (+0.0092 en el perfil, IC 0.0050 a 0.0138).
 
+**Un disparador interno: la forma de Kotidis et al. (2019) (script 21).**
+En la cinetica del grupo de Kontoravdi no hay un interruptor externo: el
+propio lactato frena la produccion ligada al crecimiento,
+(1 − L/Lacmax1), y por encima de Lacmax2 activa el consumo. En nuestro
+balance, el termino de consumo de esa forma es identico al del modelo 1;
+lo nuevo es un solo parametro, la inhibicion de la produccion por el
+lactato. Con los datos de entrenamiento ese parametro sale en 0 en los 5
+folds, y sin restriccion de signo sale negativo (−1.771): la produccion
+ligada al crecimiento no baja cuando sube el lactato, al menos entre
+cultivos. El modelo queda igual al modelo 1 (0.0580) y lejos del modelo 2.
+En estos datos, el lactato por si solo no fecha el shift. No contradice a
+Kotidis: ahi el termino de glucosa consumida tambien frena la produccion, y
+aqui no se puede usar porque la glucosa esta controlada y no hay datos de
+alimentacion.
+
 **Trabajos cercanos.** La idea de que las covariables mejoran el momento de
 un cambio de fase frente al tiempo solo ya esta publicada: Wang, Harcum y
 Xie (2026, Biotechnol Bioeng, doi:10.1002/bit.70205) y COSMIC-dFBA
