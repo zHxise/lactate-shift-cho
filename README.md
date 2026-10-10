@@ -442,6 +442,36 @@ El modelo 2 no fecha el shift mejor que el riesgo diario por si solo: su dia
 simulado coincide con el del riesgo en 65% de los cultivos. El momento lo
 aporta el modelo de riesgo; la cinetica aporta la forma del perfil.
 
+**Forma del consumo y lectura de F (script 20).** Una revision de
+literatura sugirio dos cambios, que se probaron con reglas de decision
+fijadas antes de correrlos:
+
+- **Consumo saturable por celula.** Despues del shift, la tasa de consumo por
+  celula es casi constante mientras el lactato esta por encima de un cuarto
+  de su pico (mediana 0.048 a 0.062) y cae a cero solo cerca del final
+  (−0.002). Eso no es primer orden. Cambiar k·L·IVCD por
+  q·L/(K + L)·IVCD, con K elegida solo con los cultivos de entrenamiento,
+  mejora el error despues del shift tanto con el shift real (−0.0036, IC
+  −0.0051 a −0.0021) como con F predicho (−0.0029, IC −0.0041 a −0.0017).
+  K salio intermedia (0.2 en 4 de 5 folds), no de orden cero. Se adopta.
+- **El shift como evento del cultivo.** Promediar trayectorias con cambio
+  brusco en cada dia posible, en lugar de mezclar tasas con F, no mejora
+  (+0.0003, IC 0.0001 a 0.0006). Leer F como fraccion de celulas que ya
+  cambiaron, como hace la mezcla de tasas, describe estos datos igual o
+  mejor. No se adopta.
+- Con el consumo saturable, el control con riesgo solo del dia sigue lejos
+  del modelo 2 (+0.0092 en el perfil, IC 0.0050 a 0.0138).
+
+**Trabajos cercanos.** La idea de que las covariables mejoran el momento de
+un cambio de fase frente al tiempo solo ya esta publicada: Wang, Harcum y
+Xie (2026, Biotechnol Bioeng, doi:10.1002/bit.70205) y COSMIC-dFBA
+(Gopalakrishnan et al. 2024, Metab Eng, doi:10.1016/j.ymben.2024.02.012).
+Lo de este trabajo es mas acotado: un conjunto industrial de 100 cultivos con
+validacion agrupada, un control explicito de estructura y la formulacion como
+riesgo diario. Y "la estructura sola no aporta" vale para una estructura sin
+variable que dispare el cambio; los modelos con regulacion interna (redox,
+senalizacion) si pueden fecharlo, pero necesitan mediciones que aqui no hay.
+
 **Revision independiente.** Estos resultados ya incorporan una auditoria
 independiente de los scripts 15 a 18. Encontro dos errores en la estimacion
 de α, uno que dejaba en desventaja al modelo 1 y otro al modelo 2; el
@@ -506,7 +536,7 @@ cerca de cero.
 
 ## Cita del dataset
 
-> Gangadharan, N., Turner, R., Field, R., Cheeks, M., Oliver, S.G., Slater,
+> Gangadharan, N., Sewell, D., Turner, R., Field, R., Cheeks, M., Oliver, S.G., Slater,
 > N.K.H., Dikicioglu, D. (2021). Data intelligence for process performance
 > prediction in biologics manufacturing. *Computers & Chemical Engineering*,
 > 146, 107226. https://doi.org/10.1016/j.compchemeng.2021.107226

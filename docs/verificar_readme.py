@@ -394,6 +394,7 @@ def cifras_v2() -> list[tuple[str, str]]:
           fila("Modelo 2, dos estados", "M2 dos estados (F predicho)", negrita=True),
           fila("Modelo 2 con el shift real (techo)", "M2 oraculo (F observado; techo)")]
     neg = lambda x: f"{x:.4f}".replace("-", "−")
+    neg3 = lambda x: f"{x:.3f}".replace("-", "−")
     g = r.loc["M2 dos estados (F predicho)"]
     ctl = r.loc["M2 control: riesgo solo con el dia"]
     sp = r.loc["M2 sin pH, pCO2 ni osmolalidad en el riesgo"]
@@ -436,6 +437,24 @@ def cifras_v2() -> list[tuple[str, str]]:
     lab = pm["dia_shift_etiqueta"]
     coincide = (pm["M2_shift_pred"] == pm["M2_dia_riesgo"])[lab.notna()].mean()
     c.append(("v2: coincide con el riesgo", f"coincide con el del riesgo en {coincide:.0%} de los cultivos"))
+    # --- script 20: consumo saturable y mezcla de trayectorias
+    cv = leer("consumo_vs_lactato.csv").set_index("tramo")["median"]
+    c.append(("v20: consumo por tramos",
+              f"(mediana {min(cv['25-50%'], cv['50-75%'], cv['75-100%']):.3f} a "
+              f"{max(cv['25-50%'], cv['50-75%'], cv['75-100%']):.3f})"))
+    c.append(("v20: consumo bajo", f"({neg3(cv['0-25%'])})"))
+    cm = leer("modelo2_consumo_mezcla.csv")
+    def fila20(comp, metrica):
+        f = cm[(cm["comparacion"] == comp) & (cm["metrica"] == metrica)].iloc[0]
+        return f
+    a1 = fila20("A saturable vs lineal (interruptor perfecto)", "RMSE despues del shift")
+    a2 = fila20("A saturable vs lineal (F predicho)", "RMSE despues del shift")
+    b1 = fila20("B mezcla de trayectorias vs de tasas (saturable)", "RMSE despues del shift")
+    cc = fila20("control de estructura con consumo saturable (riesgo solo dia vs M2)", "RMSE del perfil")
+    c.append(("v20: A techo", f"con el shift real ({neg(a1['dif'])}, IC\n  {neg(a1['ic_bajo'])} a {neg(a1['ic_alto'])})"))
+    c.append(("v20: A pred", f"con F predicho ({neg(a2['dif'])}, IC {neg(a2['ic_bajo'])} a {neg(a2['ic_alto'])})"))
+    c.append(("v20: B", f"(+{b1['dif']:.4f}, IC {b1['ic_bajo']:.4f} a {b1['ic_alto']:.4f})"))
+    c.append(("v20: control", f"(+{cc['dif']:.4f} en el perfil, IC {cc['ic_bajo']:.4f} a {cc['ic_alto']:.4f})"))
     return c
 
 

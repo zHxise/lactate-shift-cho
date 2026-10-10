@@ -4,7 +4,7 @@ Este directorio esta vacio a proposito.
 
 El caso de estudio usa el material suplementario `mmc3.xlsx` de:
 
-> Gangadharan, N., Turner, R., Field, R., Cheeks, M., Oliver, S.G., Slater, N.K.H.,
+> Gangadharan, N., Sewell, D., Turner, R., Field, R., Cheeks, M., Oliver, S.G., Slater, N.K.H.,
 > Dikicioglu, D. (2021). *Data intelligence for process performance prediction in
 > biologics manufacturing.* Computers & Chemical Engineering, 146, 107226.
 > https://doi.org/10.1016/j.compchemeng.2021.107226
