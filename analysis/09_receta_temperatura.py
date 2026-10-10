@@ -109,7 +109,7 @@ def main() -> None:
     filas = [{"conjunto": "baseline (mediana)", "ridge": mae_cv(DummyRegressor(strategy="median"), c[["escala"]], y),
               "random_forest": np.nan}]
     for nombre, cols in [("solo receta", receta), ("variables d1-4", nucleo),
-                         ("variables d1-4 + receta", nucleo + receta)]:
+                         ("variables d1-4 + receta", nucleo + [c for c in receta if c not in nucleo])]:  # sin repetir 'escala'
         filas.append({"conjunto": nombre, "ridge": mae_cv(ridge(), c[cols], y),
                       "random_forest": mae_cv(rf(), c[cols], y)})
     res = pd.DataFrame(filas).round(3)
@@ -178,7 +178,7 @@ def main() -> None:
                 "mediana": mae_cv(DummyRegressor(strategy="median"), g[["escala"]], yy),
                 "solo_receta": mae_cv(rf(), g[rec_cols], yy),
                 "variables_d1_4": mae_cv(rf(), g[nucleo], yy),
-                "d1_4_mas_receta": mae_cv(rf(), g[nucleo + rec_cols], yy)}
+                "d1_4_mas_receta": mae_cv(rf(), g[nucleo + [c for c in rec_cols if c not in nucleo]], yy)}
         sub.append(fila)
     sub = pd.DataFrame(sub).round(3)
     sub.to_csv(TABLAS / "receta_por_subconjunto.csv", index=False)

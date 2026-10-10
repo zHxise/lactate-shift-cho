@@ -156,7 +156,7 @@ def main() -> None:
     res = [{"conjunto": "mediana", "ridge": receta_mod.mae_cv(DummyRegressor(strategy="median"), c[["escala"]], y),
             "random_forest": np.nan}]
     for nombre, cols in [("solo receta", receta), ("variables d1-4", nucleo),
-                         ("d1-4 + receta", nucleo + receta)]:
+                         ("d1-4 + receta", nucleo + [c for c in receta if c not in nucleo])]:  # sin repetir 'escala'
         res.append({"conjunto": nombre, "ridge": receta_mod.mae_cv(ridge(), c[cols], y),
                     "random_forest": receta_mod.mae_cv(rf(), c[cols], y)})
     res = pd.DataFrame(res).round(3)

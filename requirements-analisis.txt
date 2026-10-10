@@ -1,0 +1,12 @@
+# Versiones con las que se generaron las cifras de analysis/09-15 (Python 3.10.12).
+# Con otras versiones de scikit-learn las particiones de StratifiedGroupKFold
+# cambian y los AUC pueden moverse ~0.01 (lo detecto la auditoria de octubre 2026).
+# Instalar con:  pip install -r requirements-analisis.txt
+numpy==2.2.6
+pandas==2.3.3
+scipy==1.15.3
+scikit-learn==1.7.2
+openpyxl==3.1.5
+matplotlib==3.10.9
+# Scripts 04-05 (Cox y SHAP) usan ademas lifelines y shap; no se fijaron porque
+# esas cifras no forman parte del analisis actual.
