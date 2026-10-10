@@ -265,6 +265,8 @@ def cifras() -> list[tuple[str, str]]:
     c.append(("puntos aislados",
               f"{len(pa)} de {len(et)} cultivos\n  tienen un punto bajo aislado y {efecto}"))
 
+    c += cifras_v2()
+
     # --- tests
     out = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q"],
                          cwd=RAIZ, capture_output=True, text=True,
@@ -274,17 +276,134 @@ def cifras() -> list[tuple[str, str]]:
     return c
 
 
+def cifras_v2() -> list[tuple[str, str]]:
+    """Cifras del caso de estudio actual (scripts 10-19)."""
+    c: list[tuple[str, str]] = []
+
+    # --- etiquetas por tasa especifica (11)
+    et = leer("etiquetas_evento_tasa.csv", index_col="cult")
+    m = et[~et["excluir"]]
+    ev = m[m["evento"]]
+    n_ev, n_cens = len(ev), len(m) - len(ev)
+    d = ev["dia"].value_counts().sort_index()
+    c += [
+        ("v2: conjunto", f"**{len(m)} cultivos, {n_ev} con shift y {n_cens} censurados**"),
+        ("v2: excluidos", f"{' y '.join(et[et['excluir']].index)} se\nexcluyen"),
+        ("v2: distribucion",
+         f"mediana {ev['dia'].median():.0f} ({d[4]:.0f} cultivos\nen el dia 4, {d[5]:.0f} en el 5, "
+         f"{d[6]:.0f} en el 6, {d[7]:.0f} en el 7, {d[8]:.0f} en el 8, {d[9]:.0f} en el 9 y {d[11]:.0f} en\nel 11)"),
+    ]
+    for D, txt in (("0.02", "2% diario,\n{} de {} dias del shift no cambian"), ("0.05", "5%, {} de {}")):
+        k = int((m[f"dia_D{D}"] == m["dia_D0.00"]).sum())
+        c.append((f"v2: dilucion {D}", txt.format(k, m["dia_D0.00"].notna().sum())))
+    qc = leer("qc_gases_enmascarados.csv")
+    c.append(("v2: QC gases", f"Son {len(qc)}: " +
+              " y\n".join(f"{r.cult} dia {int(r.day)}" for r in qc.sort_values("cult", ascending=False).itertuples())))
+
+    # --- modelo de riesgo (15)
+    mc = leer("metricas_corregidas.csv", index_col="modelo")
+    s, m3 = mc.loc["solo dia"], mc.loc["M3"]
+    c += [
+        ("v2: AUC solo dia", f"| Solo el dia | {s['auc']:.3f} |"),
+        ("v2: AUC M3", f"| Dia + mediciones | **{m3['auc']:.3f}** (IC 95% {m3['auc_ic_bajo']:.3f}-{m3['auc_ic_alto']:.3f}) |"),
+        ("v2: mejora", f"Mejora: {m3['mejora']:+.3f} (IC 95% {m3['mejora_ic_bajo']:+.3f} a {m3['mejora_ic_alto']:+.3f}"),
+        ("v2: alarma", f"en {int(m3['exacto'])} de\n{n_ev} cultivos"),
+    ]
+    for r in leer("auc_por_dia.csv").itertuples():
+        c.append((f"v2: AUC dia {r.dia}", f"| {r.dia} | {r.eventos} | {r.en_riesgo} | {r.auc_M3:.3f} |"))
+
+    # --- asociaciones (15)
+    orc = leer("or_por_iqr_conjunto.csv", index_col=0)
+    fmt = lambda x: f"{x:.1f}" if x >= 10 else f"{x:.2f}"
+    for v, nombre in (("vcd", "VCD"), ("ph", "pH"), ("pco2", "pCO2"), ("glutamina", "Glutamina"), ("amonio", "Amonio")):
+        r = orc.loc[v]
+        c.append((f"v2: OR {v}", f"| {nombre} | {fmt(r['or_por_iqr'])} | {fmt(r['ic_bajo'])}-{fmt(r['ic_alto'])} |"))
+    og = leer("or_por_iqr_por_grupo.csv")
+    for v, txt in (("vcd", "| VCD |"), ("ph", "| pH |"), ("pco2", "| pCO2 |")):
+        k = int(og[og["variable"] == v]["ic_excluye_1"].sum())
+        c.append((f"v2: {v} en grupos", "Si |" if k == 3 else f"En {k} de 3 |"))
+    ge = leer("glutamina_evento_auc.csv").iloc[0]
+    c.append(("v2: glutamina evento",
+              f"(diferencia {ge['dif_vs_M3']:.4f}, IC {ge['dif_ic_bajo']:.4f} a {ge['dif_ic_alto']:.4f})".replace("-", "−")))
+    ga = leer("glutamina_agotamiento_vs_shift.csv", index_col=0)
+    k = int(((ga["primer_agotamiento"] - ga["dia_shift"]).abs() <= 1).sum())
+    c.append(("v2: glutamina coincidencia", f"shift en {k} de {len(ga)} cultivos"))
+
+    # --- VCD dia 3 (calculado aqui: el 0.66 de la tabla es solo de los 34 con cambio de T)
+    from _comun import cargar
+    raw = cargar("Raw Data")
+    v3 = raw[raw["day"] == 3].set_index("cult")["VCD"]
+    rec = leer("receta_temperatura.csv", index_col="cult")
+    dd = ev.join(v3.rename("v3")).join(rec).dropna(subset=["v3"])
+    r2 = lambda g: np.corrcoef(g["v3"], g["dia"])[0, 1] ** 2
+    c.append(("v2: R2 VCD d3",
+              f"R² {r2(dd):.2f} del dia del shift en los {len(dd)} cultivos con shift ({r2(dd[dd['tshift'] == 1]):.2f} en\n"
+              f"  los {int((dd['tshift'] == 1).sum())} con cambio de temperatura y {r2(dd[dd['tshift'] == 0]):.2f} en los "
+              f"{int((dd['tshift'] == 0).sum())} sin el)"))
+
+    # --- temperatura (15)
+    tc = leer("temperatura_corregida.csv").iloc[0]
+    tr = leer("temperatura_regresion.csv", index_col="modelo")
+    c += [
+        ("v2: temperatura coincidencia",
+         f"En los {int(tc['n'])} cultivos con cambio de temperatura, el shift cae a ±1 dia del\n  cambio en el "
+         f"{tc['observado']:.0%}; por azar, permutando, se espera {tc['azar']:.0%} (p = {tc['p']:.3f})"),
+        ("v2: temperatura por grupo", f"el azar ya da {tc['azar_dentro_grupo']:.0%} (p = {tc['p_grupo']:.3f})"),
+        ("v2: temperatura R2", f"explica R² {tr.loc['vcd_d3', 'r2']:.3f}"),
+        ("v2: temperatura R2 tshift", f"solo explica {tr.loc['tshift_day', 'r2']:.3f}"),
+        ("v2: temperatura coef",
+         f"{tr.loc['vcd_d3 + tshift_day', 'coef_tshift_day']:.3f} (IC {tc['coef_tshift_ajustado_ic_bajo']:.3f} a "
+         f"{tc['coef_tshift_ajustado_ic_alto']:.3f})".replace("-", "−")),
+    ]
+
+    # --- reversibilidad (16)
+    rv = leer("reversibilidad_shift.csv")
+    rp = rv["reproduce_15"].notna()
+    c.append(("v2: reversibilidad",
+              f"{int(rp.sum())} de {len(rv)} cultivos vuelven a producir lactato"))
+    c.append(("v2: reversibilidad dia", f"con mediana en el dia {rv.loc[rp, 'reproduce_15'].median():.0f}"))
+    c.append(("v2: reversibilidad VCD",
+              f"{int((rv['vcd_relativa_al_max'] < 0.95).sum())} de esos {int(rp.sum())}"))
+
+    # --- modelos 1 y 2 (17, 18)
+    r = leer("modelo2_resumen.csv", index_col="modelo")
+    def fila(nombre, clave, negrita=False):
+        f = r.loc[clave]
+        b = "**" if negrita else ""
+        sh = "-" if pd.isna(f["shift_pm1"]) else f"{b}{f['shift_pm1']:.0%}{b}"
+        return (f"v2: tabla {clave}",
+                f"| {b}{nombre}{b} | {b}{f['rmse_perfil']:.4f}{b} | {b}{f['rmse_2dias']:.4f}{b} | {sh} |")
+    c += [fila("Perfil promedio (referencia)", "perfil promedio"),
+          fila("Modelo 1, sin interruptor", "M1 sin interruptor (script 17)"),
+          fila("Modelo 2, riesgo solo del dia (control)", "M2 control: riesgo solo con el dia"),
+          fila("Modelo 2, dos estados", "M2 dos estados (F predicho)", True),
+          fila("Modelo 2 con el shift real (techo)", "M2 oraculo (F observado; techo)")]
+    g = r.loc["M2 dos estados (F predicho)"]
+    c.append(("v2: diferencia M2 vs M1",
+              f"{g['dif_2dias_vs_M1']:.4f}\n  (IC 95% {g['ic_bajo']:.4f} a {g['ic_alto']:.4f})".replace("-", "−")))
+    c.append(("v2: pH interruptor vs cinetica",
+              f"({r.loc['M2 con pH solo en el interruptor', 'rmse_2dias']:.4f} y "
+              f"{r.loc['M2 con pH solo en la cinetica', 'rmse_2dias']:.4f} a 2 dias)"))
+    return c
+
+
 def main() -> int:
     # para consolas de Windows sin algunos caracteres
     try:
         sys.stdout.reconfigure(errors="replace")
     except AttributeError:
         pass
-    readme = (RAIZ / "README.md").read_text(encoding="utf-8")
+    # las cifras de la version 1 del caso de estudio viven en docs/caso_estudio_v1.md
+    readme = "\n".join((RAIZ / f).read_text(encoding="utf-8")
+                        for f in ("README.md", "docs/caso_estudio_v1.md"))
     fallos = 0
     lista = cifras()
+    # se compara ignorando saltos de linea y espacios repetidos, para que
+    # reacomodar un parrafo no rompa la verificacion
+    plano = lambda t: " ".join(t.split())
+    readme_plano = plano(readme)
     for desc, texto in lista:
-        if texto == "ok" or texto in readme:
+        if texto == "ok" or plano(texto) in readme_plano:
             print(f"  ok     {desc}")
         else:
             fallos += 1

@@ -2,31 +2,29 @@
 
 Desarrollado por Arturo Rodriguez.
 
-Deteccion del *lactate shift* en cultivos de celulas de mamifero, y un caso de
-estudio sobre si ese cambio puede anticiparse desde los primeros dias del
-cultivo.
+Que determina el momento del *lactate shift* en cultivos CHO fed-batch, y
+si se puede anticipar con un enfoque interpretable.
 
 El **lactate shift** es el momento en que un cultivo deja de producir lactato
-netamente y empieza a consumirlo. Cuando ocurre y que tan sostenido es se
-asocia con el desempeno del lote, asi que detectarlo de forma consistente es
-un requisito previo para cualquier analisis de proceso que lo involucre.
+netamente y empieza a consumirlo. La acumulacion de lactato inhibe el
+crecimiento y la productividad, asi que entender que adelanta o retrasa el
+cambio es util para controlarla.
 
 Este repositorio tiene dos partes:
 
 1. **`lactateshift`**, un paquete de Python que detecta el shift en cualquier
-   serie de lactato y construye variables predictoras de una ventana temprana
-   sin dejar entrar informacion posterior a ella.
+   serie de lactato y construye variables de una ventana temprana sin dejar
+   entrar informacion posterior a ella.
 2. **`analysis/`**, un caso de estudio sobre 106 cultivos CHO industriales de
-   5 a 500 L, que intenta predecir el dia del shift usando solo los dias 1-4.
+   5 a 500 L: una definicion del shift por celula, un modelo de riesgo diario
+   y dos modelos mecanisticos del perfil de lactato.
 
-El caso de estudio llega a un **resultado mixto**.
-Las variables de los dias 1-4 predicen el dia del shift mejor que el dia
-tipico de cada escala de reactor, incluso dentro de una misma escala. Pero esa
-relacion no se traslada a una escala que el modelo no vio: es especifica de
-cada contexto de proceso. Las dos cosas estan documentadas abajo, con los
-experimentos que las sostienen.
-
-![Pipeline del proyecto](docs/pipeline.png)
+En corto: el momento del shift se asocia sobre todo con el crecimiento
+temprano, y ademas con pH y pCO2. Un modelo de riesgo diario sin variables de
+lactato anticipa bien los shifts tempranos y mal los tardios. Un modelo de dos
+estados, con la transicion dada por ese riesgo, describe el perfil de lactato
+mejor que uno sin cambio de estado. Todo son asociaciones en datos
+normalizados, con las limitaciones que se detallan abajo.
 
 ---
 
@@ -196,328 +194,239 @@ si el articulo cumplia los criterios. Detalle, citas y desviaciones en
 
 ## El caso de estudio
 
-Dataset: 106 cultivos CHO de 5 a 500 L, 9 a 18 dias, 24 variables de proceso
-normalizadas, del material suplementario de Gangadharan et al. (2021).
-**El archivo no se distribuye aqui: esta bajo copyright de Elsevier.** Ver
-[`data/raw/README.md`](data/raw/README.md) para obtenerlo, con verificacion
-por SHA-256.
+**Pregunta:** ¿que determina el momento del lactate shift y el perfil de
+lactato en cultivos CHO fed-batch, y se puede anticipar 1-2 dias antes con un
+enfoque interpretable?
+
+Dataset: 106 cultivos CHO de AstraZeneca, de 5 a 500 L y 9 a 18 dias, con 24
+variables de proceso normalizadas min-max (0-1) sobre todo el conjunto y sin
+unidades, del material suplementario de Gangadharan et al. (2021). Se usa la
+hoja *Raw Data*: la hoja *Gap-Filled* rellena huecos con informacion de dias
+posteriores. **El archivo no se distribuye aqui: esta bajo copyright de
+Elsevier.** Ver [`data/raw/README.md`](data/raw/README.md) para obtenerlo,
+con verificacion por SHA-256.
 
 ```bash
-python analysis/00_verificar_datos.py        # comprueba el archivo
-python analysis/01_exploracion.py            # estructura, faltantes, cobertura
-python analysis/02_definicion_evento.py      # etiqueta + sensibilidad
-python analysis/02b_figura_evento.py         # verificacion visual
-python analysis/03_features.py               # variables de los dias 1-4
-python analysis/04_modelado.py               # regresion, Cox y controles
-python analysis/05_shap.py                   # interpretacion y sus limites
-python analysis/06_respuesta_auditoria.py    # controles adicionales
-python analysis/07_baseline_por_escala.py    # ¿aportan algo las variables por encima de la escala?
-python analysis/08_puntos_aislados.py        # ¿alguna etiqueta depende de un error de medicion?
-python docs/verificar_readme.py              # cada cifra de este README contra las salidas
+pip install -r requirements-analisis.txt      # versiones fijas del analisis
+python analysis/00_verificar_datos.py         # comprueba el archivo
+python analysis/10_tasa_especifica.py         # tasa especifica de lactato por celula
+python analysis/11_definicion_final.py        # etiqueta del shift (definicion vigente)
+python analysis/12_estado_celular.py          # tabla persona-periodo y modelo de riesgo
+python analysis/13_asociaciones_por_grupo.py  # asociaciones por grupo de volumen
+python analysis/14_modelo_cinetico.py         # modelo cinetico con parametros globales
+python analysis/15_correcciones_auditoria.py  # QC de gases, metricas, temperatura
+python analysis/16_reversibilidad_glutamina.py
+python analysis/17_modelo1_crecimiento.py     # modelo 1: sin interruptor
+python analysis/18_modelo2_dos_estados.py     # modelo 2: dos estados
+python analysis/19_figuras.py
+python docs/verificar_readme.py               # cada cifra del README contra las salidas
 ```
 
-Todas las cifras de esta seccion se guardan en `outputs/tablas/` y
-`docs/verificar_readme.py` comprueba que cada una aparezca aqui tal cual.
+Los scripts 02 a 09 son la primera version del analisis, con otra definicion
+y otra pregunta. Se conservan como registro en
+[`docs/caso_estudio_v1.md`](docs/caso_estudio_v1.md).
 
-### La pregunta que este trabajo responde, y la que no
+### Definicion del evento
 
-Con la definicion congelada, **101 de 106 cultivos hacen el shift**. Preguntar
-"lo hace o no" da 95 contra 5 y no tiene contenido: lo que varia es **cuando**.
-Por eso el problema se planteo como tiempo-a-evento.
+Esta definicion no es la del paquete `lactateshift`: el paquete trabaja
+sobre la concentracion (y es el que se valido externamente); la del caso de
+estudio trabaja sobre la tasa por celula y vive en `analysis/10` y `11`.
 
-Ademas, 16 cultivos hacen el shift **dentro** de la ventana de observacion y se
-excluyen: no hay nada que anticipar cuando el desenlace ya esta en las propias
-variables. Eso deja **90 cultivos: 85 con evento y 5 censurados**.
+El shift es **el ultimo dia de produccion neta de lactato por celula**. Para
+cada intervalo entre mediciones se calcula la tasa especifica
+q = ΔL / IVCD, donde IVCD es la integral de la densidad de celulas viables en
+el intervalo. Hay shift cuando q es negativa dos intervalos seguidos y el
+lactato suavizado cae al menos 15%; el dia se ajusta al maximo de la serie
+cruda, dentro de un dia.
 
-Este trabajo **no** responde "se puede predecir el lactate shift en cultivos
-CHO". Responde una pregunta condicional:
+Por que por celula y no por concentracion: la concentracion mezcla cuanto
+produce cada celula con cuantas celulas hay. Un cultivo que crece mucho puede
+seguir acumulando lactato aunque cada celula ya haya cambiado de regimen.
 
-> Dado un cultivo que **todavia no ha hecho el shift** al cerrar el dia 4,
-> ¿que dia lo hara?
+La tasa no incluye dilucion por alimentacion, porque el regimen de
+alimentacion no esta en el dataset. Con una dilucion supuesta de 2% diario,
+98 de 100 dias del shift no cambian; con 5%, 90 de 100.
 
-Los 16 cultivos excluidos no se predicen. Ademas hay una consecuencia
-operativa: **saber que un cultivo pertenece a
-esa poblacion requiere informacion posterior al dia 4.** La propia regla
-necesita dias siguientes para confirmar que un descenso es sostenido. En una
-planta, aplicar este modelo exigiria primero un clasificador para esa
-decision, con sus propios errores. Tal como esta, la condicion de entrada es
-un oraculo retrospectivo.
+Resultado: **104 cultivos, 100 con shift y 4 censurados**. C33 y C34 se
+excluyen porque nunca acumulan lactato. Dia del shift: mediana 6 (15 cultivos
+en el dia 4, 21 en el 5, 31 en el 6, 22 en el 7, 6 en el 8, 4 en el 9 y 1 en
+el 11).
 
-Dia del evento: mediana 6, rango 5 a 11 (20 cultivos en el dia 5, 32 en el 6,
-22 en el 7, 6 en el 8, 4 en el 9 y 1 en el 11). La anticipacion efectiva
-sobre la ventana es de **2 dias en mediana**, y 20 de 85 eventos ocurren a un
-solo dia del cierre. Es una anticipacion corta.
+Control de calidad de gases: las lecturas con pH a mas de 3 rangos
+intercuartilicos se enmascaran (pH, pCO2 y pO2 de ese dia). Son 2: C75 dia 2
+y C101 dia 1.
 
-### Que salio
+### Modelo de riesgo diario
 
-Prediccion del dia del evento, error absoluto medio en dias
-(validacion cruzada repetida 5×5):
+Cada dia en que un cultivo todavia no ha hecho el shift es una fila; el
+desenlace es si el shift ocurre ese dia. Una regresion logistica con el dia
+como categorias estima la probabilidad diaria. Las variables son las
+mediciones del propio dia (VCD, glutamina, glutamato, amonio, pH,
+osmolalidad, glucosa, pO2, pCO2), el cambio de VCD y la temperatura.
+**Ninguna variable de lactato entra al modelo**, para que no aprenda a
+reconocer el shift en la propia curva que lo define. La validacion es
+agrupada por cultivo: todas las filas de un cultivo caen en el mismo fold.
 
-| Variables | Baseline (mediana) | Ridge | Random Forest |
+| Modelo | AUC fuera de fold |
+|---|---|
+| Solo el dia | 0.815 |
+| Dia + mediciones | **0.942** (IC 95% 0.924-0.960) |
+
+Mejora: +0.127 (IC 95% +0.099 a +0.158, bootstrap por cultivo). Con una
+alarma en probabilidad ≥0.5, el modelo marca el dia exacto del shift en 53 de
+100 cultivos.
+
+El "solo el dia" es el rival correcto: el riesgo sube con los dias en
+cualquier cultivo, y un AUC alto puede venir solo de eso. Contra ese rival,
+las mediciones agregan informacion.
+
+Donde funciona y donde no:
+
+| Dia | Eventos | En riesgo | AUC dentro del dia |
 |---|---|---|---|
-| Nucleo (28) | 0.835 | 0.613 | **0.571** |
-| + glutamina y osmolalidad (36) | 0.835 | 0.650 | 0.578 |
-| Solo la escala del reactor (control) | 0.835 | 0.928 | 0.795 |
+| 4 | 15 | 104 | 0.954 |
+| 5 | 21 | 89 | 0.952 |
+| 6 | 31 | 68 | 0.875 |
+| 7 | 22 | 37 | 0.670 |
+| 8 | 6 | 15 | 0.389 |
 
-Glutamina y osmolalidad no aportan: son las variables con mas datos faltantes
-en la ventana y las mas imputadas por los autores del dataset.
+**Anticipa bien los shifts tempranos y mal los tardios.** El AUC dentro de un
+dia compara solo cultivos que siguen en riesgo ese dia, asi que no lo infla
+el efecto del calendario.
 
-Prueba de permutacion: se baraja el dia del evento y se repite todo el
-procedimiento, seleccion de hiperparametros incluida. El p-valor usa la
-correccion (k+1)/(n+1), asi que el menor valor posible depende del numero de
-barajadas.
+### Que se asocia con el momento del shift
 
-| Modelo | MAE observado | Nulo | p | Barajadas |
-|---|---|---|---|---|
-| Ridge | 0.625 | 0.934 ± 0.022 | 0.005 | 200 |
-| Random Forest | 0.607 | 0.974 ± 0.039 | 0.024 | 40 |
+Razon de momios por rango intercuartilico, modelo conjunto (IC 95% por
+bootstrap de cultivos). Una razon mayor que 1 adelanta el shift; menor que 1
+lo retrasa.
 
-En los dos casos el p es el minimo posible: ninguna barajada igualo al
-resultado real.
-
-Modelo de Cox sobre los 90 cultivos, aprovechando los censurados: c-index
-0.829, contra un nulo permutado de 0.485 ± 0.051 (p = 0.032, 30 barajadas) y
-un control de solo-escala de 0.542. **Es evidencia secundaria y debil**: 74 de
-los 85 eventos caen en tres dias y solo hay 5 censurados, asi que el c-index
-mide sobre todo la resolucion de empates. No es una confirmacion
-independiente del resultado de regresion.
-
-> **Sobre el 0.571.** Es la mejor de nueve combinaciones de modelo y conjunto
-> de variables, elegida despues de verlas todas. Sin validacion cruzada
-> anidada es una cifra **exploratoria**, no una estimacion confirmatoria de
-> desempeno futuro. Lo que si aguanta es el orden: los dos modelos le ganan al
-> baseline con los dos conjuntos de variables, y el control de solo-escala no.
-
-### El resultado negativo
-
-Dejando fuera una escala de reactor completa y prediciendo sobre ella:
-
-| Escala excluida | n | Baseline | Ridge | Random Forest |
-|---|---|---|---|---|
-| 0.00202 | 43 | 1.023 | 0.947 | 1.074 |
-| 0.00181 | 18 | 0.778 | 1.375 | 1.552 |
-| 0.00000 | 16 | 0.438 | 0.505 | 0.466 |
-| **Ponderado** | | **0.844** | 0.955 | 1.059 |
-
-**Ningun modelo le gana al baseline en promedio ponderado.** El Random Forest
-lo empeora en las tres escalas. Ridge le gana en una: en la escala de 43
-cultivos obtiene 0.947 frente a 1.023 del baseline.
-
-Son **tres** escalas (43, 18 y 16 cultivos), sin intervalos que midan la
-variabilidad de excluir una. Lo que los numeros permiten afirmar es que **en
-estas tres particiones el modelo no mostro transferencia**, no que no
-transfiera en general. Quitar `escala` de las variables no cambia el
-resultado (Random Forest 1.062 frente a 1.059), asi que la degradacion no
-viene de que el modelo conociera el volumen de la escala nueva.
-
-### ¿Las variables aportan algo por encima de la escala?
-
-La objecion principal al resultado es que predecir el dia del shift podria
-ser lo mismo que *aprender a que escala pertenece el cultivo*. El control de
-solo-escala ya mostraba que la escala predice por si sola, asi que "predecir
-la mediana global" es un baseline debil.
-
-`analysis/07_baseline_por_escala.py` usa un baseline mas fuerte, **predecir
-el dia mediano de la propia escala**, que por si solo erra 0.769 dias, y
-reporta la incertidumbre con bootstrap sobre cultivos:
-
-| Comparacion | Diferencia (dias) | IC 95% |
-|---|---|---|
-| Random Forest vs mediana global | +0.265 | [+0.100, +0.423] |
-| **Random Forest vs mediana de la escala** | **+0.199** | **[+0.052, +0.349]** |
-| Ridge vs mediana global | +0.222 | [+0.066, +0.372] |
-| Ridge vs mediana de la escala | +0.156 | [+0.014, +0.298] |
-
-Los dos modelos le ganan al rival fuerte con intervalos que no tocan cero.
-
-La prueba mas directa es trabajar **dentro de una sola escala**, donde el
-volumen es constante y no puede explicar nada. En la escala de 43 cultivos:
-
-| Dentro de una escala (n=43) | MAE (dias) |
-|---|---|
-| Mediana | 0.810 |
-| Ridge | 0.736 |
-| Random Forest | 0.713 |
-
-Permutando el dia del evento dentro de esa misma escala, el nulo da
-0.963 ± 0.062 (p = 0.024, el minimo con 40 barajadas). **Las variables de los
-dias 1-4 contienen informacion sobre el dia del shift que la escala no
-explica.**
-
-De donde sale la ventaja:
-
-| Dia real | n | Error de la mediana de la escala | Error del Random Forest |
+| Variable | Razon de momios | IC 95% | ¿Se sostiene en los 3 grupos de volumen? |
 |---|---|---|---|
-| 5 | 20 | 1.22 | **0.41** |
-| 6 | 32 | 0.49 | 0.56 |
-| 7 | 22 | 0.19 | 0.33 |
-| 8 | 6 | 1.20 | **0.71** |
-| 9 | 4 | 2.50 | **1.70** |
-| 11 | 1 | 4.00 | 3.99 |
+| VCD | 16.8 | 12.2-49.6 | Si |
+| pH | 0.16 | 0.07-0.27 | Si |
+| pCO2 | 0.31 | 0.12-0.79 | En 2 de 3 |
+| Glutamina | 1.39 | 1.15-1.90 | No (cambia de signo) |
+| Amonio | 0.97 | 0.45-0.99 | No |
 
-El modelo no mejora el caso tipico: en los dias 6 y 7 la mediana de la escala
-ya acierta y el modelo erra un poco mas. Lo que hace es **distinguir a los
-cultivos que cambian antes o despues de lo habitual**, sobre todo los
-tempranos del dia 5, donde el error baja de 1.22 a 0.41 dias. Esa es la parte
-util de una prediccion temprana: detectar al que se sale del patron.
+![Asociaciones](docs/figuras/fig3_asociaciones.png)
 
-**Como encaja con el leave-one-scale-out.** Las dos cosas son ciertas a la
-vez: dentro de un contexto de proceso, las variables tempranas predicen el dia
-del shift mejor que la escala; entre contextos, la relacion no se traslada.
-La conclusion que sostienen los datos no es "el modelo solo aprende la escala"
-ni "hay una senal fisiologica universal", sino que **la relacion entre las
-variables tempranas y el dia del shift existe, pero es especifica de cada
-contexto de proceso**.
+- **El crecimiento es la asociacion mas fuerte.** La VCD del dia 3, sola,
+  explica R² 0.46 del dia del shift en los 100 cultivos con shift (0.66 en
+  los 34 con cambio de temperatura y 0.29 en los 65 sin el).
+- **pH y pCO2 mas altos se asocian con un shift mas tardio.** No son un
+  reflejo del lactato acumulado (el lactato no entra al modelo), pero el
+  dataset no dice que controla el pH (CO2 o base), asi que no se puede
+  separar uno de otro.
+- **Glutamina y amonio no son robustos.** La glutamina sube con el tiempo en
+  la mayoria de los cultivos, que no es el patron de agotamiento tipico (una
+  linea GS-CHO lo explicaria, pero es inferencia). Como evento de
+  agotamiento, con el umbral fijado solo con datos de entrenamiento, no
+  mejora el AUC (diferencia −0.0002, IC −0.0009 a 0.0006) y coincide con el
+  shift en 8 de 31 cultivos, al nivel del azar.
 
-Lo que esta prueba no resuelve: dentro de una escala todavia puede haber
-confusion por linea celular o lote, que el dataset no permite controlar. Y es
-una sola escala; la de 18 y la de 16 cultivos son demasiado chicas para
-repetirla con potencia.
+Son asociaciones, no causas.
 
-### Que dice la interpretacion, y que no
+### El cambio de temperatura no explica el momento
 
-Los valores SHAP se calculan **fuera del fold de entrenamiento**: SHAP explica
-al modelo, y un modelo sobreajustado da explicaciones nitidas de su propio
-sobreajuste. La importancia por SHAP y por permutacion ordenan las variables
-casi igual (correlacion de rangos 0.95).
+Una version anterior de este analisis decia que el shift ocurre casi siempre
+junto al cambio de temperatura (36.5 → 33 °C). **No se sostiene.**
 
-La direccion de los efectos: mas biomasa y crecimiento mas rapido en los dias
-1-4, y un lactato mas alto o que sube mas rapido, adelantan el shift. Mas
-glutamato, amonio o pH lo retrasan.
+- En los 34 cultivos con cambio de temperatura, el shift cae a ±1 dia del
+  cambio en el 82%; por azar, permutando, se espera 67% (p = 0.018). Dentro
+  de cada grupo de volumen el azar ya da 70% (p = 0.042).
+- En esos mismos 34 cultivos, la VCD del dia 3 explica R² 0.663 del dia del
+  shift. El dia del cambio de temperatura solo explica 0.261, y al sumarlo a
+  la VCD su coeficiente es 0.023 (IC −0.177 a 0.173): no aporta nada.
 
-Pero la magnitud de la importancia hay que leerla con cuidado.
+En este dataset la receta, el crecimiento y el proceso van juntos y no se
+pueden separar.
 
-**Importancia no es necesidad.** El glutamato domina el ranking de SHAP
-(0.52 de |SHAP| sumado, contra 0.18 de la siguiente, la glucosa) y tambien
-encabeza la importancia por permutacion. Aun asi:
+### El shift es reversible
 
-| Conjunto | MAE (dias) |
-|---|---|
-| Baseline (mediana) | 0.835 |
-| Todas las variables | 0.571 |
-| Solo glutamato | 0.667 |
-| Todas **sin** glutamato | 0.592 |
+55 de 100 cultivos vuelven a producir lactato de forma sostenida despues del
+shift (q positiva dos intervalos y subida ≥15%), con mediana en el dia 12. En
+39 de esos 55 la VCD ya esta por debajo del 95% de su maximo: la
+re-produccion ocurre sobre todo en el declive del cultivo. Un modelo con un
+cambio irreversible describe bien la fase de crecimiento, pero no el cultivo
+completo.
 
-Quitarlo casi no empeora nada. SHAP y la permutacion miden cuanto **usa** el
-modelo una variable, no cuanta informacion **unica** aporta: la del glutamato
-tambien esta en las demas, y el modelo la recupera de ahi.
+### Modelos mecanisticos del perfil de lactato
 
-(La variable a quitar se eligio despues de ver los resultados de SHAP, lo que
-sesga el experimento, pero a favor de que quitarla empeore el modelo, y no
-empeora.)
+Dos estructuras, comparadas sobre la misma ventana (hasta que la VCD cae por
+debajo del 85% de su maximo), con validacion agrupada por cultivo:
 
-**Parte de la senal del glutamato es identidad del proceso.** Su grafico de
-dependencia no muestra una relacion continua sino dos nubes separadas.
-Partiendo la muestra por la mediana de esa variable, el 74% del grupo alto cae
-en una sola escala de reactor, y los dos grupos difieren en el dia del evento
-(mediana 7 contra 6). La variable funciona en parte como marcador de a que
-familia de cultivos pertenece el lote. Eso no contradice la prueba dentro de
-escala de la seccion anterior: el glutamato es la variable preferida del
-modelo, no la unica fuente de informacion.
+- **Modelo 1, sin interruptor.** El lactato se produce en proporcion al
+  crecimiento, modulado por pH y pCO2, y se consume en proporcion al lactato
+  y a las celulas:
+  ΔL = α·ΔX⁺·(1 + a_p·pH' + a_c·pCO2') + β·IVCD − k·L·IVCD.
+  Es la hipotesis nula: no hay un cambio de estado.
+- **Modelo 2, dos estados.** La misma cinetica, pero la produccion se apaga
+  segun la probabilidad acumulada de haber hecho el shift, F, que sale del
+  modelo de riesgo diario ajustado solo con los cultivos de entrenamiento.
 
-### Revision del codigo y del analisis
+En los dos, el parametro de produccion α de cada cultivo se estima con sus
+dias 1-4 y se encoge hacia el valor de la poblacion (Bayes empirico).
 
-El codigo y el analisis se revisaron en varias rondas buscando errores.
+| Modelo | RMSE del perfil | RMSE a 2 dias | Shift simulado a ±1 dia |
+|---|---|---|---|
+| Perfil promedio (referencia) | 0.0636 | 0.0428 | - |
+| Modelo 1, sin interruptor | 0.0645 | 0.0440 | 62% |
+| Modelo 2, riesgo solo del dia (control) | 0.0598 | 0.0421 | 79% |
+| **Modelo 2, dos estados** | **0.0509** | **0.0356** | **94%** |
+| Modelo 2 con el shift real (techo) | 0.0481 | 0.0339 | 100% |
 
-**Errores encontrados y corregidos:**
+![Comparacion de modelos](docs/figuras/fig5_comparacion_modelos.png)
 
-1. `<col>_n` contaba como medidos los dias rellenados. Habia un test que
-   afirmaba ese comportamiento.
-2. La prueba de permutacion congelaba un `alpha` de Ridge elegido con las
-   etiquetas reales, lo que sesgaba el p-valor a favor del resultado.
-3. SHAP agrupaba lactato/glucosa y lactato/VCD en una sola categoria.
-4. Este README afirmaba que ningun modelo le ganaba al baseline al cambiar de
-   escala; Ridge si le gana en una de las tres.
-5. Los experimentos de sensibilidad corrian con 27 variables en vez de 28.
-6. Una correlacion reportada (0.78) era de una corrida anterior.
-7. La permutacion solo cubria Ridge mientras se destacaba la cifra del Random
-   Forest.
-8. Las direcciones de SHAP se calculaban contra valores sin imputar.
-9. El baseline de mediana global era un rival demasiado debil (ver la
-   seccion anterior). Un primer intento de medir la incertidumbre contra el
-   rival fuerte usaba un intervalo mal construido y se corrigio antes de
-   reportarlo.
-10. La pendiente y el promedio de la ventana se calculaban incluyendo los dias
-    rellenados, que no son mediciones. Ahora usan solo los dias medidos.
-11. Los p-valores podian salir exactamente 0. Ahora usan (k+1)/(n+1).
-12. La explicacion de `refine_peak` suponia que el suavizado corre el maximo
-    hacia atras; en los datos reales lo corre mas a menudo hacia adelante.
+- El modelo 1 no le gana al perfil promedio.
+- El modelo 2 si, y la diferencia a 2 dias contra el modelo 1 es −0.0084
+  (IC 95% −0.0102 a −0.0065). Cumple la regla de decision fijada antes de
+  correrlo.
+- El control alimenta el interruptor con un riesgo que solo conoce el dia.
+  La forma de dos estados ayuda algo por si sola (mejor perfil completo y
+  79% de shifts a ±1 dia), pero a 2 dias queda practicamente igual que el
+  modelo 1 (−0.0019, IC −0.0039 a 0.0001). La ventaja del modelo 2 viene
+  sobre todo de las mediciones del cultivo.
+- Donde va el pH (en el interruptor o en la cinetica) no se puede decidir:
+  las dos variantes dan casi lo mismo (0.0357 y 0.0362 a 2 dias).
 
-**Objeciones que resultaron incorrectas al verificarlas:** que la permutacion
-de Cox rompia el par (tiempo, evento), y que el detector no garantizaba un
-maximo local. La segunda se habia aceptado con una verificacion mal hecha
-(comparaba el dia ya refinado, no el punto detectado) y se retiro despues. La
-opcion que se habia agregado para "corregirla" hacia que las mesetas no se
-detectaran nunca, y se elimino.
-
-**Controles adicionales** (`analysis/06_respuesta_auditoria.py` y
-`analysis/07_baseline_por_escala.py`):
-
-*¿El modelo solo extrapola la curva de lactato que ya empezo?*
-
-| Conjunto | MAE (dias) |
-|---|---|
-| Baseline | 0.835 |
-| Todas (28 variables) | 0.571 |
-| Solo variables de lactato (6) | 0.684 |
-| **Sin ninguna variable de lactato (22)** | **0.593** |
-
-El desempeno no depende de las variables explicitas de lactato. No demuestra
-que el modelo ignore la trayectoria del lactato: glucosa, VCD y amonio son
-proxies mecanicos de ella.
-
-*¿Las conclusiones dependen de la definicion del evento?* Con ocho
-definiciones alternativas, cada una contra su propio baseline, la mejora es
-positiva en todas: entre 0.184 y 0.252 dias (mediana 0.237), incluida la
-variante sin `refine_peak`, que excluye 6 cultivos en vez de 16 (mejora
-0.239). Las ocho son variaciones de la **misma familia de regla**: respaldan
-estabilidad ante sus parametros, no robustez ante una definicion
-estructuralmente distinta.
+**Alcance.** El modelo 2 es explicativo, no un pronostico completo: usa la
+VCD medida en todo el horizonte. Para anticipar el perfil en planta habria
+que pronosticar tambien el crecimiento. Ademas, el resultado se ve muy bien,
+y por eso esta pendiente de una auditoria independiente antes de darlo por
+bueno.
 
 ## Limitaciones
 
-- **El alcance es condicional**: cultivos que no han hecho el shift al cerrar
-  el dia 4. Los 16 excluidos no se predicen, y saber si un cultivo pertenece
-  a esa poblacion requiere informacion posterior al dia 4.
-- **La relacion no se traslada entre escalas** en las tres evaluadas.
-- **La senal dentro de escala se probo en una sola escala** (43 cultivos), y
-  dentro de ella puede haber confusion por linea celular o lote.
-- **El 0.571 es una cifra seleccionada** entre nueve combinaciones, sin
-  validacion cruzada anidada. Exploratoria, no confirmatoria.
-- **La regla no distingue un cambio de regimen permanente de una caida
-  profunda reversible**, y sin `min_peak` no filtra por amplitud absoluta.
-- **Un solo punto muy bajo cerca del final puede crear un shift falso.** La
-  media de 3 dias no lo anula en el borde de la serie. Lo encontro una prueba
-  con datos inventados (una meseta con un 0.7 entre 3.2 y 4.3). En el caso de
-  estudio se reviso con `analysis/08_puntos_aislados.py`: 16 de 106 cultivos
-  tienen un punto bajo aislado y quitarlo no cambia el resultado de ninguno.
-  `lactateshift.isolated_low_points` y el script del CSV senalan esos puntos
-  para revisarlos; el detector no se modifico.
-- **El detector no marca los shifts suaves.** En la validacion externa fallo
-  en las 2 curvas donde el lactato bajo menos del 30%. En el caso de estudio,
-  los 5 cultivos censurados pueden incluir shifts de ese tipo.
-- **Los datos sinteticos no reproducen la forma de los cultivos reales**:
-  validan el mecanismo del detector, no su adecuacion a cultivos reales.
-- **El experimento "sin lactato" no descarta los proxies** (glucosa, VCD,
-  amonio) del mismo estado glucolitico.
-- **Las ocho definiciones alternativas pertenecen a la misma familia de
-  regla**: falta contrastar con un metodo estructuralmente distinto, como la
-  deteccion de puntos de cambio.
-- **La imputacion del dataset de origen no es causal.** Los autores rellenaron
-  huecos con interpolacion de Stineman mas SVR sobre series completas, que usa
-  el punto posterior. Por eso todo el analisis parte de la hoja sin rellenar.
-- **No se puede agrupar la validacion por linea celular.** El dataset trae
-  linea celular y lote para 45 cultivos, pero sin llave a las series de
-  tiempo. El desempeno reportado es probablemente optimista.
-- **Los datos vienen normalizados 0-1 por columna sobre todo el conjunto**:
-  una fuga leve e inevitable en el dato de origen.
-- **El c-index de Cox convive con empates masivos** y solo 5 censurados.
-- **Sin marcadores redox** (NAD+, piruvato): asociacion, no mecanismo.
-- **El muestreo esparso degrada la precision del dia.** Con 30% de dias
-  ausentes el error en el dia detectado puede llegar a 2 dias.
-- El fenomeno esta muy estudiado y su mecanismo sigue en debate. Esto no es el
-  primer trabajo que predice comportamiento de lactato en CHO; lo que aporta
-  es una deteccion auditable y una validacion que incluye lo que no funciono.
+- **Datos normalizados y sin unidades.** Todo es relativo dentro del
+  dataset: no hay umbrales absolutos, y los cocientes entre variables
+  normalizadas no tienen sentido fisico. La normalizacion se hizo sobre todo
+  el conjunto, una fuga leve e inevitable en el dato de origen.
+- **Receta, producto, escala y temperatura estan entrelazados.** No hay llave
+  entre las series y la linea celular o el producto, asi que la validacion se
+  agrupa por cultivo, no por producto. El desempeno es probablemente
+  optimista.
+- **104 cultivos heterogeneos.** Cada modelo extra es una oportunidad de
+  sobreajuste; por eso las comparaciones se hacen contra rivales fuertes, con
+  intervalos por bootstrap de cultivos y reglas de decision fijadas antes.
+- **El modelo de riesgo falla en los shifts tardios** (dia 7 en adelante).
+- **Sin regimen de alimentacion ni dilucion.** La tasa especifica la ignora;
+  es robusta hasta una dilucion de alrededor de 3% diario.
+- **Sin marcadores redox** (NAD+/NADH, piruvato): las asociaciones no
+  identifican el mecanismo.
+- **El fenomeno esta muy estudiado** y su mecanismo sigue en debate (ver,
+  entre otros, Schmitt et al. 2019). Esto no es el primer trabajo que modela
+  o anticipa el shift en CHO; lo que aporta es una definicion por celula, una
+  comparacion honesta entre estructuras mecanisticas y la documentacion de lo
+  que no funciono.
+
+## Historia del analisis
+
+La primera version del caso de estudio (scripts 02 a 09) usaba otra
+definicion del shift (sobre la concentracion) y otra pregunta (predecir el
+dia con los dias 1-4). Esta documentada completa, con lo que no funciono, en
+[`docs/caso_estudio_v1.md`](docs/caso_estudio_v1.md). El analisis se reviso
+varias veces con auditorias independientes; las correcciones que salieron de
+ellas estan en los mensajes de commit y en `analysis/15_correcciones_auditoria.py`.
 
 ## Tests
 

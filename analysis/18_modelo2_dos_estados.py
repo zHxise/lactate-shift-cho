@@ -164,7 +164,11 @@ def main() -> None:
     base = correr(S, pp, pp_ciego, et, m3, True, "M2")
     v_solo_interruptor = correr(S, pp, pp_ciego, et, m3, False, "pHinterruptor")
     v_solo_cinetica = correr(S, pp, pp_ciego, et, m3_sin_ph, True, "pHcinetica")
-    t = m1_ev.join(base).join(v_solo_interruptor).join(v_solo_cinetica)
+    # control negativo: el interruptor se alimenta con un riesgo que solo conoce el dia.
+    # Si M2 ganara igual con esto, la ventaja vendria de la forma de dos estados y no
+    # de las mediciones del cultivo.
+    v_solo_dia = correr(S, pp, pp_ciego, et, dia, True, "solodia")
+    t = m1_ev.join(base).join(v_solo_interruptor).join(v_solo_cinetica).join(v_solo_dia)
     t.to_csv(TABLAS / "modelo2_por_cultivo.csv")
 
     lab = t["dia_shift_etiqueta"]
@@ -189,7 +193,9 @@ def main() -> None:
              fila("M2 con pH solo en el interruptor", "pHinterruptor_rmse_pred", "pHinterruptor_rmse2_pred",
                   "pHinterruptor_shift_pred"),
              fila("M2 con pH solo en la cinetica", "pHcinetica_rmse_pred", "pHcinetica_rmse2_pred",
-                  "pHcinetica_shift_pred")]
+                  "pHcinetica_shift_pred"),
+             fila("M2 control: riesgo solo con el dia", "solodia_rmse_pred", "solodia_rmse2_pred",
+                  "solodia_shift_pred")]
     res = pd.DataFrame(filas)
     res.round(4).to_csv(TABLAS / "modelo2_resumen.csv", index=False)
     pd.set_option("display.width", 200)
