@@ -21,8 +21,9 @@ shift sale solo cuando el crecimiento se frena; aqui el consumo se "enciende"
 segun las condiciones del cultivo (VCD, pH, pCO2, etc. del modelo de riesgo).
 
 Variante "oraculo": F observado tambien en prueba. No es un modelo usable
-(usa la etiqueta), es el techo: cuanto ganaria la estructura 2 si el
-interruptor se predijera perfecto.
+(usa la etiqueta). Muestra cuanto ganaria la estructura 2 si el interruptor
+se predijera perfecto. No es un techo estricto: con alfa por cultivo otros
+modelos pueden quedar por debajo.
 
 Regla de decision fijada ANTES de correr (de la propuesta de modelos):
 la estructura 2 se prefiere a la 1 solo si
@@ -91,10 +92,9 @@ def f_obs(s, et_c):
 
 
 def ajustar2(S, cultivos, et, mu, sd, ph_cin):
+    """Alfa propia por cultivo de entrenamiento (efectos fijos; ver m1.ajustar_ef)."""
     bloques = [matriz2(S[c], f_obs(S[c], et.loc[c]), mu, sd, ph_cin) for c in cultivos]
-    A = np.vstack([b[0] for b in bloques]); y = np.concatenate([b[1] for b in bloques])
-    ok = np.isfinite(A).all(axis=1) & np.isfinite(y)
-    return lsq_linear(A[ok], y[ok], bounds=([0, 0, 0, -np.inf, -np.inf], [np.inf] * 5)).x
+    return m1.ajustar_ef(bloques, [0, 0, -np.inf, -np.inf])[0]
 
 
 def alfa_cond2(s, F, p, mu, sd, lam, ph_cin, hasta=4):
@@ -180,6 +180,10 @@ def correr(S, pp, pp_ciego, et, cols_riesgo, ph_cin, etiqueta):
         p = ajustar2(S, tr, et, mu, sd, ph_cin)
         lam = lambda_pooling2(S, tr, et, p, mu, sd, ph_cin)
         Fp, Fz = riesgo_predicho(pp_ciego, pp[pp["cult"].isin(tr)], cols_riesgo, te, congelar=True)
+        # para el pronostico verdadero a 2 dias: modelo 1 y referencia de incremento medio
+        p1 = m1.ajustar(S, tr, D, mu, sd)[0]
+        lam1 = m1.lambda_pooling(S, tr, p1, D, mu, sd)
+        inc2 = pd.concat([S[c]["L"].diff(2).shift(-2) for c in tr], axis=1).mean(axis=1)
         et_tr = et.loc[[c for c in tr if c in et.index]]
         dia_const = float(et_tr.loc[et_tr["evento"], "dia"].median())  # referencia: dia mediano de entrenamiento
         for c in te:
@@ -204,6 +208,29 @@ def correr(S, pp, pp_ciego, et, cols_riesgo, ph_cin, etiqueta):
                         Fi[i + 1] = F_z[i + 1]
                         e2z.append(simular2(s, Fi, p, a, mu, sd, ph_cin, i0=i, n=2)[i + 2] - obs[i + 2])
                     res["rmse2_congelado"] = float(np.sqrt(np.nanmean(np.square(e2z)))) if e2z else np.nan
+                    # PRONOSTICO VERDADERO a 2 dias desde los dias >= 4: la VCD de t+1 y t+2
+                    # no se conoce; se extrapola en linea recta con los dias t-1 y t. El
+                    # interruptor usa F congelado. Se compara con M1 (misma VCD extrapolada)
+                    # y con "lactato de hoy + incremento medio de entrenamiento".
+                    a1 = m1.alfa_condicionada(s, p1, D, mu, sd, lam1)
+                    X = s["X"].to_numpy()
+                    ep_m2, ep_m1, ep_b, ep_obs = [], [], [], []
+                    for i in range(1, len(obs) - 2):
+                        if s.index[i] < 4:
+                            continue
+                        Xe = X.copy()
+                        pend = X[i] - X[i - 1]
+                        Xe[i + 1], Xe[i + 2] = max(X[i] + pend, 0), max(X[i] + 2 * pend, 0)
+                        se = s.copy(); se["X"] = Xe
+                        Fi = F.copy(); Fi[i + 1] = F_z[i + 1]
+                        ep_m2.append(simular2(se, Fi, p, a, mu, sd, ph_cin, i0=i, n=2)[i + 2] - obs[i + 2])
+                        ep_obs.append(simular2(s, Fi, p, a, mu, sd, ph_cin, i0=i, n=2)[i + 2] - obs[i + 2])
+                        ep_m1.append(m1.simular(se.iloc[i:i + 3], p1, a1, D, mu, sd)[2] - obs[i + 2])
+                        b = inc2.reindex([s.index[i]]).to_numpy()[0]
+                        ep_b.append(obs[i] + b - obs[i + 2])
+                    rm = lambda e: float(np.sqrt(np.nanmean(np.square(e)))) if len(e) else np.nan
+                    res["pron2_M2"], res["pron2_M1"], res["pron2_base"] = rm(ep_m2), rm(ep_m1), rm(ep_b)
+                    res["pron2_M2_vcd_obs"] = rm(ep_obs)
             filas.append(res)
     df = pd.DataFrame(filas).set_index("cult")
     df.columns = [f"{etiqueta}_{c}" for c in df.columns]
@@ -290,7 +317,7 @@ def main() -> None:
               "rmse_2dias": t["rmse2_baseline"].mean()},
              fila("M2 dos estados (F predicho)", "M2_rmse_pred", "M2_rmse2_pred", "M2_shift_pred",
                   "M2_rmse2_congelado"),
-             fila("M2 oraculo (F observado; techo)", "M2_rmse_oraculo", "M2_rmse2_oraculo", "M2_shift_oraculo"),
+             fila("M2 con el shift real", "M2_rmse_oraculo", "M2_rmse2_oraculo", "M2_shift_oraculo"),
              fila("M2 con pH solo en el interruptor", "pHinterruptor_rmse_pred", "pHinterruptor_rmse2_pred",
                   "pHinterruptor_shift_pred", "pHinterruptor_rmse2_congelado"),
              fila("M2 con pH solo en la cinetica", "pHcinetica_rmse_pred", "pHcinetica_rmse2_pred",
@@ -308,6 +335,20 @@ def main() -> None:
     print(f"Regla de decision: (a) IC de la diferencia a 2 dias < 0: {g['ic_alto'] < 0} | "
           f"(b) mas aciertos del shift que M1: {g['shift_pm1'] > res.iloc[0]['shift_pm1']}")
 
+    # ---------------- pronostico verdadero a 2 dias (VCD extrapolada, origenes >= dia 4)
+    pr = []
+    for nombre, col in (("incremento medio de entrenamiento", "M2_pron2_base"),
+                        ("M1, VCD extrapolada", "M2_pron2_M1"),
+                        ("M2 interruptor congelado, VCD extrapolada", "M2_pron2_M2"),
+                        ("M2 interruptor congelado, VCD observada (referencia explicativa)", "M2_pron2_M2_vcd_obs")):
+        d, ic = m1.ic_pareado(t[col], t["M2_pron2_base"])
+        pr.append({"metodo": nombre, "rmse_2dias": t[col].mean(), "dif_vs_incremento": d,
+                   "ic_bajo": ic[0], "ic_alto": ic[1], "cultivos": int(t[col].notna().sum())})
+    pr = pd.DataFrame(pr)
+    pr.round(4).to_csv(TABLAS / "modelo2_pronostico_2dias.csv", index=False)
+    print("\nPronostico a 2 dias sin VCD futura (origenes >= dia 4):")
+    print(pr.round(4).to_string(index=False))
+
     # ---------------- acierto del dia del shift contra referencias simples
     tiempo, por_dia = tabla_tiempo(lab, {
         "dia mediano de entrenamiento (constante)": t["M2_dia_const"],
@@ -315,7 +356,7 @@ def main() -> None:
         "M1 sin interruptor": t["dia_shift_simulado"],
         "M2 riesgo solo con el dia (control)": t["solodia_shift_pred"],
         "M2 dos estados": t["M2_shift_pred"],
-        "M2 oraculo (techo)": t["M2_shift_oraculo"]})
+        "M2 con el shift real": t["M2_shift_oraculo"]})
     tiempo.round(4).to_csv(TABLAS / "modelo2_tiempo.csv", index=False)
     por_dia.round(4).to_csv(TABLAS / "modelo2_tiempo_por_dia.csv", index=False)
     print("\n" + tiempo.round(3).to_string(index=False))

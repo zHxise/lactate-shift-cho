@@ -382,46 +382,53 @@ def cifras_v2() -> list[tuple[str, str]]:
     c.append(("v2: reversibilidad VCD",
               f"{int((rv['vcd_relativa_al_max'] < 0.95).sum())} de esos {int(rp.sum())}"))
 
-    # --- modelos 1 y 2 (17, 18)
+    cj = leer("cambios_junto_al_lactato.csv").set_index("variable")["rho_spearman"]
+    c.append(("v2: pH y pCO2 con el lactato",
+              f"(Spearman {cj['pH']:.2f} para pH y {cj['pCO2']:.2f} para pCO2)".replace("-", "−")))
+    # --- modelos 1 y 2 (17, 18), alfa por cultivo
+    neg = lambda x: f"{x:.4f}".replace("-", "−")
+    neg3 = lambda x: f"{x:.3f}".replace("-", "−")
+    pc = lambda x: f"{x * 100:.0f}%"
+    ic = lambda f, a, b: f"IC {neg(f[a])} a {neg(f[b])}"
     r = leer("modelo2_resumen.csv", index_col="modelo")
-    def fila(nombre, clave, col1="rmse_perfil", col2="rmse_2dias", negrita=False):
+    def fila(nombre, clave, negrita=False):
         f = r.loc[clave]
         b = "**" if negrita else ""
-        return (f"v2: tabla {clave}", f"| {b}{nombre}{b} | {b}{f[col1]:.4f}{b} | {b}{f[col2]:.4f}{b} |")
+        return (f"v2: tabla {clave}", f"| {b}{nombre}{b} | {b}{f['rmse_perfil']:.4f}{b} | {b}{f['rmse_2dias']:.4f}{b} |")
     c += [fila("Perfil promedio (referencia)", "perfil promedio"),
           fila("Modelo 1, sin interruptor", "M1 sin interruptor (script 17)"),
           fila("Modelo 2, riesgo solo del dia (control)", "M2 control: riesgo solo con el dia"),
-          fila("Modelo 2, dos estados", "M2 dos estados (F predicho)", negrita=True),
-          fila("Modelo 2 con el shift real (techo)", "M2 oraculo (F observado; techo)")]
-    neg = lambda x: f"{x:.4f}".replace("-", "−")
-    neg3 = lambda x: f"{x:.3f}".replace("-", "−")
+          fila("Modelo 2, dos estados", "M2 dos estados (F predicho)", True),
+          fila("Modelo 2 con el shift real", "M2 con el shift real")]
     g = r.loc["M2 dos estados (F predicho)"]
     ctl = r.loc["M2 control: riesgo solo con el dia"]
     sp = r.loc["M2 sin pH, pCO2 ni osmolalidad en el riesgo"]
     c += [
-        ("v2: M2 vs M1 perfil", f"{neg(g['dif_perfil_vs_M1'])} en el perfil (IC 95% {neg(g['ic_perfil_bajo'])} a "
-                                f"{neg(g['ic_perfil_alto'])}) y {neg(g['dif_2dias_vs_M1'])}\n  a 2 dias "
-                                f"(IC {neg(g['ic_bajo'])} a {neg(g['ic_alto'])})"),
-        ("v2: control vs M1", f"{neg(ctl['dif_perfil_vs_M1'])} en el\n  perfil (IC {neg(ctl['ic_perfil_bajo'])} a "
-                              f"{neg(ctl['ic_perfil_alto'])})"),
-        ("v2: congelado", f"el modelo 2 pasa a\n  {g['rmse_2dias_congelado']:.4f} y sigue mejor que el modelo 1 "
-                          f"({neg(g['dif_congelado_vs_M1'])}, IC {neg(g['ic_congelado_bajo'])} a "
-                          f"{neg(g['ic_congelado_alto'])})"),
+        ("v2: M2 vs M1", f"{neg(g['dif_perfil_vs_M1'])} en el perfil (IC 95% {neg(g['ic_perfil_bajo'])} a "
+                         f"{neg(g['ic_perfil_alto'])}) y {neg(g['dif_2dias_vs_M1'])} a 2 dias "
+                         f"({ic(g, 'ic_bajo', 'ic_alto')})"),
+        ("v2: control vs M1", f"{neg(ctl['dif_perfil_vs_M1'])} ({ic(ctl, 'ic_perfil_bajo', 'ic_perfil_alto')})"),
+        ("v2: congelado", f"queda en {g['rmse_2dias_congelado']:.4f} y sigue mejor que el modelo 1 "
+                          f"({neg(g['dif_congelado_vs_M1'])}, {ic(g, 'ic_congelado_bajo', 'ic_congelado_alto')})"),
         ("v2: sin proxies", f"el perfil queda en {sp['rmse_perfil']:.4f}"),
-        ("v2: pH interruptor vs cinetica",
-         f"({r.loc['M2 con pH solo en el interruptor', 'rmse_2dias']:.4f} y "
-         f"{r.loc['M2 con pH solo en la cinetica', 'rmse_2dias']:.4f} a 2 dias)"),
+        ("v2: pH", f"{r.loc['M2 con pH solo en el interruptor', 'rmse_2dias']:.4f} y "
+                   f"{r.loc['M2 con pH solo en la cinetica', 'rmse_2dias']:.4f} a 2 dias"),
     ]
-    sc = leer("modelo2_serie_completa.csv", index_col="modelo")
-    m2c = sc.loc["M2 dos estados"]
-    c.append(("v2: serie completa",
-              f"{neg(m2c['dif_perfil_vs_promedio'])} en el\n  perfil (IC {neg(m2c['ic_perfil_bajo'])} a "
-              f"{neg(m2c['ic_perfil_alto'])}) y {neg(m2c['dif_2dias_vs_promedio'])} a 2 dias "
-              f"(IC {neg(m2c['ic_2dias_bajo'])} a {neg(m2c['ic_2dias_alto'])})"))
-    c.append(("v2: serie completa M1", "El modelo 1 no le gana." if sc.loc["M1 sin interruptor", "ic_perfil_bajo"] > -1e-9
-              or sc.loc["M1 sin interruptor", "ic_perfil_alto"] >= 0 else "FALTA: M1 si gana en la serie completa"))
+    sc = leer("modelo2_serie_completa.csv", index_col="modelo").loc["M2 dos estados"]
+    c.append(("v2: serie completa", f"(modelo 2 {neg(sc['dif_perfil_vs_promedio'])}, "
+                                    f"{ic(sc, 'ic_perfil_bajo', 'ic_perfil_alto')})"))
+    c.append(("v2: serie completa 2 dias", f"({neg(sc['dif_2dias_vs_promedio'])}, {ic(sc, 'ic_2dias_bajo', 'ic_2dias_alto')})"))
+    pr = leer("modelo2_pronostico_2dias.csv", index_col="metodo")
+    c += [("v2: pronostico incremento", f"| Lactato de hoy + incremento medio de entrenamiento | "
+                                        f"{pr.loc['incremento medio de entrenamiento', 'rmse_2dias']:.4f} |"),
+          ("v2: pronostico M1", f"| Modelo 1, VCD extrapolada | {pr.loc['M1, VCD extrapolada', 'rmse_2dias']:.4f} |"),
+          ("v2: pronostico M2", f"| **Modelo 2, VCD extrapolada** | "
+                                f"**{pr.loc['M2 interruptor congelado, VCD extrapolada', 'rmse_2dias']:.4f}** |")]
+    f2 = pr.loc["M2 interruptor congelado, VCD extrapolada"]
+    f1 = pr.loc["M1, VCD extrapolada"]
+    c.append(("v2: pronostico M2 dif", f"({neg(f2['dif_vs_incremento'])}, {ic(f2, 'ic_bajo', 'ic_alto')})"))
+    c.append(("v2: pronostico M1 dif", f"({neg(f1['dif_vs_incremento'])}, {ic(f1, 'ic_bajo', 'ic_alto')})"))
     tt = leer("modelo2_tiempo.csv", index_col="metodo")
-    pc = lambda x: f"{x * 100:.0f}%"
     for clave, nombre in (("dia mediano de entrenamiento (constante)", "Siempre el dia mediano de entrenamiento"),
                           ("M1 sin interruptor", "Modelo 1, sin interruptor"),
                           ("M2 riesgo solo con el dia (control)", "Modelo 2, riesgo solo del dia (control)"),
@@ -431,41 +438,56 @@ def cifras_v2() -> list[tuple[str, str]]:
         c.append((f"v2: tiempo {clave}", f"| {nombre} | {pc(f['exacto'])} | {pc(f['pm1'])} |"))
     por = leer("modelo2_tiempo_por_dia.csv")
     m2d = por[por["metodo"] == "M2 dos estados"].set_index("dia_real")["cultivos"]
-    c.append(("v2: shifts dias 5-7", f"{int(m2d.loc[[5, 6, 7]].sum())} de los {int(m2d.sum())}\nshifts dentro de la ventana"))
+    c.append(("v2: shifts dias 5-7", f"{int(m2d.loc[[5, 6, 7]].sum())} de los {int(m2d.sum())} shifts dentro de la ventana"))
     c.append(("v2: constante +-1", f"ya acierta {pc(tt.loc['dia mediano de entrenamiento (constante)', 'pm1'])}"))
     pm = pd.read_csv(TAB / "modelo2_por_cultivo.csv", index_col="cult")
     lab = pm["dia_shift_etiqueta"]
     coincide = (pm["M2_shift_pred"] == pm["M2_dia_riesgo"])[lab.notna()].mean()
     c.append(("v2: coincide con el riesgo", f"coincide con el del riesgo en {coincide:.0%} de los cultivos"))
-    # --- script 20: consumo saturable y mezcla de trayectorias
+
+    # --- script 20: consumo con piso
     cv = leer("consumo_vs_lactato.csv").set_index("tramo")["median"]
-    c.append(("v20: consumo por tramos",
-              f"(mediana {min(cv['25-50%'], cv['50-75%'], cv['75-100%']):.3f} a "
-              f"{max(cv['25-50%'], cv['50-75%'], cv['75-100%']):.3f})"))
+    c.append(("v20: consumo por tramos", f"(mediana {min(cv['25-50%'], cv['50-75%'], cv['75-100%']):.3f} a "
+                                         f"{max(cv['25-50%'], cv['50-75%'], cv['75-100%']):.3f})"))
     c.append(("v20: consumo bajo", f"({neg3(cv['0-25%'])})"))
+    fo = leer("modelo2_consumo_formas.csv")
+    c.append(("v20: formas", f"Gano en los {int((~np.isinf(fo['K'])).sum())} folds, con L* entre {fo['piso'].min():.2f} "
+                             f"y {fo['piso'].max():.2f} y K entre {fo['K'].min():.2f} y {fo['K'].max():.2f}"))
     cm = leer("modelo2_consumo_mezcla.csv")
-    def fila20(comp, metrica):
-        f = cm[(cm["comparacion"] == comp) & (cm["metrica"] == metrica)].iloc[0]
-        return f
-    a1 = fila20("A saturable vs lineal (interruptor perfecto)", "RMSE despues del shift")
-    a2 = fila20("A saturable vs lineal (F predicho)", "RMSE despues del shift")
-    b1 = fila20("B mezcla de trayectorias vs de tasas (saturable)", "RMSE despues del shift")
-    cc = fila20("control de estructura con consumo saturable (riesgo solo dia vs M2)", "RMSE del perfil")
-    c.append(("v20: A techo", f"con el shift real ({neg(a1['dif'])}, IC\n  {neg(a1['ic_bajo'])} a {neg(a1['ic_alto'])})"))
-    c.append(("v20: A pred", f"con F predicho ({neg(a2['dif'])}, IC {neg(a2['ic_bajo'])} a {neg(a2['ic_alto'])})"))
-    c.append(("v20: B", f"(+{b1['dif']:.4f}, IC {b1['ic_bajo']:.4f} a {b1['ic_alto']:.4f})"))
-    c.append(("v20: control", f"(+{cc['dif']:.4f} en el perfil, IC {cc['ic_bajo']:.4f} a {cc['ic_alto']:.4f})"))
-    dz = leer("modelo2_consumo_desplazamiento.csv").set_index("desplazamiento")["mse_relativo_a_primer_orden"]
-    c.append(("v20: desplazamiento", f"{dz.loc[0.0]:.3f} del error del primer orden con 0, {dz.loc[0.1]:.3f} con 0.10"))
-    se = leer("modelo2_consumo_sensibilidad.csv")
-    c.append(("v20: desplazamiento fuerza primer orden",
-              "se elige el\n  primer orden en todos los folds" if (se["K_por_fold"].str.split().explode() == "inf").all()
-              else "FALTA: con desplazamiento no siempre se elige primer orden"))
+    def f20(comp, met):
+        return cm[(cm["comparacion"] == comp) & (cm["metrica"] == met)].iloc[0]
+    a0 = f20("A saturable vs lineal (reinicio en el shift real)", "RMSE despues del shift")
+    a2 = f20("A saturable vs lineal (F predicho)", "RMSE despues del shift")
+    ap = f20("A saturable vs lineal (F predicho)", "RMSE del perfil")
+    b1 = f20("B mezcla de trayectorias vs de tasas (saturable)", "RMSE despues del shift")
+    cc = f20("control de estructura con consumo saturable (riesgo solo dia vs M2)", "RMSE del perfil")
+    c += [("v20: reinicio", f"en {neg(a0['dif'])} (IC {neg(a0['ic_bajo'])} a {neg(a0['ic_alto'])})"),
+          ("v20: pred", f"{neg(a2['dif'])} (IC {neg(a2['ic_bajo'])} a {neg(a2['ic_alto'])})"),
+          ("v20: perfil", f"baja de {ap['referencia']:.4f} a {ap['modelo']:.4f}"),
+          ("v20: control", f"(+{cc['dif']:.4f}, IC {neg(cc['ic_bajo'])} a {neg(cc['ic_alto'])})"),
+          ("v20: B", f"(+{b1['dif']:.4f}, IC {neg(b1['ic_bajo'])} a {neg(b1['ic_alto'])})")]
+
     # --- script 21: forma tipo Kotidis
-    cl = leer("modelo_kotidis_c_libre.csv").set_index("parametro")["libre"]
+    dg = leer("modelo_kotidis_diagnostico.csv").iloc[0]
     rk = leer("modelo_kotidis_resumen.csv").set_index("modelo")
-    c.append(("v21: c libre", f"sale negativo ({cl['c']:.3f})".replace("-", "−")))
-    c.append(("v21: igual a M1", f"El modelo queda igual al modelo 1 ({rk.loc['tipo Kotidis (disparador: lactato)', 'rmse_perfil']:.4f})"))
+    ck = leer("modelo_kotidis_comparaciones.csv").set_index("comparacion")
+    K = rk.loc["tipo Kotidis, sin interruptor (inhibe el lactato)"]
+    c += [("v21: c entre", f"c sale negativo ({neg3(dg['c_una_alfa_comun'])})"),
+          ("v21: c dentro", f"c = {dg['c_alfa_por_cultivo']:.3f}"),
+          ("v21: sin modelo", f"(Spearman mediana {neg3(dg['rho_mediana_sin_modelo'])[:-1]}, negativo en "
+                              f"{dg['frac_rho_negativo']:.0%} de {int(dg['cultivos_rho'])} cultivos)"),
+          ("v21: Kotidis vs M2", f"{K['rmse_perfil']:.4f} contra {rk.loc['M2 interruptor externo (riesgo)', 'rmse_perfil']:.4f} "
+                                 f"(diferencia {neg(ck.loc['Kotidis - M2 (perfil)', 'dif'])}, IC "
+                                 f"{neg(ck.loc['Kotidis - M2 (perfil)', 'ic_bajo'])} a {neg(ck.loc['Kotidis - M2 (perfil)', 'ic_alto'])})"),
+          ("v21: Kotidis vs M1", f"({neg(ck.loc['Kotidis - M1 (perfil)', 'dif'])}, IC "
+                                 f"{neg(ck.loc['Kotidis - M1 (perfil)', 'ic_bajo'])} a {neg(ck.loc['Kotidis - M1 (perfil)', 'ic_alto'])})"),
+          ("v21: Kotidis tiempo", f"({pc(K['exacto'])} exacto, {pc(K['pm1'])} a ±1 dia)"),
+          ("v21: controles", f"queda en {rk.loc['control: inhibe el dia del cultivo', 'rmse_perfil']:.4f} y "
+                             f"{rk.loc['control: inhibe la IVCD acumulada', 'rmse_perfil']:.4f}"),
+          ("v21: M2 + inhibicion", f"llega a {rk.loc['M2 + inhibicion por lactato (exploratorio)', 'rmse_perfil']:.4f} "
+                                   f"({neg(ck.loc['M2 + inhibicion - M2 (perfil)', 'dif'])} contra el modelo 2, IC "
+                                   f"{neg(ck.loc['M2 + inhibicion - M2 (perfil)', 'ic_bajo'])} a "
+                                   f"{neg(ck.loc['M2 + inhibicion - M2 (perfil)', 'ic_alto'])})")]
     return c
 
 

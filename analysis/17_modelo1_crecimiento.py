@@ -114,12 +114,46 @@ def matriz(s, d, mu, sd):
     return A, y
 
 
+def ajustar_ef(bloques, lo_comp):
+    """Ajuste con alfa PROPIA de cada cultivo de entrenamiento (efectos fijos).
+
+    bloques: lista de (A, y), una por cultivo, con la columna 0 = termino de alfa.
+    lo_comp: limites inferiores de los parametros compartidos (columnas 1..).
+    Devuelve p (p[0] = alfa media de los cultivos, usada como valor al que se
+    encoge la alfa de un cultivo nuevo; p[1:] = parametros compartidos) y el
+    error cuadratico medio del ajuste.
+
+    Por que: con una sola alfa para todos, los parametros compartidos absorben
+    las diferencias ENTRE cultivos (el que produce mas lactato por celula
+    tambien acumula mas). La auditoria de la tarea 7 mostro que eso invierte el
+    signo de la inhibicion por lactato (efecto tipo Simpson) y deja a todos los
+    modelos en desventaja. Con alfa por cultivo, los parametros compartidos se
+    estiman con la variacion DENTRO de cada cultivo.
+    """
+    bl = []
+    for A, y in bloques:
+        ok = np.isfinite(A).all(axis=1) & np.isfinite(y)
+        if ok.sum():
+            bl.append((A[ok], y[ok]))
+    n, m = len(bl), bl[0][0].shape[1] - 1
+    filas, ys = [], []
+    for j, (A, y) in enumerate(bl):
+        Z = np.zeros((len(y), n))
+        Z[:, j] = A[:, 0]
+        filas.append(np.hstack([Z, A[:, 1:]]))
+        ys.append(y)
+    X, Y = np.vstack(filas), np.concatenate(ys)
+    r = lsq_linear(X, Y, bounds=([0] * n + list(lo_comp), [np.inf] * (n + m)))
+    alfas = r.x[:n]
+    con_senal = [np.any(A[:, 0] > 0) for A, _ in bl]  # cultivos sin crecimiento no informan alfa
+    p = np.concatenate([[np.mean(alfas[con_senal])], r.x[n:]])
+    return p, float(np.mean((X @ r.x - Y) ** 2))
+
+
 def ajustar(S, cultivos, d, mu, sd):
-    A = np.vstack([matriz(S[c], d, mu, sd)[0] for c in cultivos])
-    y = np.concatenate([matriz(S[c], d, mu, sd)[1] for c in cultivos])
-    ok = np.isfinite(A).all(axis=1) & np.isfinite(y)
-    lo = [0, 0, 0, -np.inf, -np.inf]
-    return lsq_linear(A[ok], y[ok], bounds=(lo, [np.inf] * 5)).x, A[ok], y[ok]
+    bloques = [matriz(S[c], d, mu, sd) for c in cultivos]
+    p, mse = ajustar_ef(bloques, [0, 0, -np.inf, -np.inf])
+    return p, mse, None
 
 
 def lambda_pooling(S, cultivos, p, d, mu, sd):

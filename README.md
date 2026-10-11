@@ -6,9 +6,10 @@ Que determina el momento del *lactate shift* en cultivos CHO fed-batch, y
 si se puede anticipar con un enfoque interpretable.
 
 El **lactate shift** es el momento en que un cultivo deja de producir lactato
-netamente y empieza a consumirlo. La acumulacion de lactato inhibe el
-crecimiento y la productividad, asi que entender que adelanta o retrasa el
-cambio es util para controlarla.
+netamente y empieza a consumirlo. La acumulacion de lactato baja el pH, obliga a anadir base y sube la
+osmolalidad, lo que afecta el crecimiento y la productividad (ver, por
+ejemplo, Morrissey et al. 2026, doi:10.1002/bit.70224). Entender que
+adelanta o retrasa el cambio es util para controlarla.
 
 Este repositorio tiene dos partes:
 
@@ -22,10 +23,12 @@ Este repositorio tiene dos partes:
 En corto: el momento del shift se asocia sobre todo con el crecimiento
 temprano, y ademas con pH y pCO2. Un modelo de riesgo diario sin variables de
 lactato anticipa bien los shifts tempranos y mal los tardios. Usar ese riesgo
-como interruptor de una cinetica de lactato mejora el ajuste del perfil sobre
-una cinetica sin interruptor; la estructura de dos estados por si sola no
-aporta nada. Todo son asociaciones en datos normalizados, con las
-limitaciones que se detallan abajo.
+como interruptor de una cinetica de lactato mejora el perfil y permite un
+pronostico a 2 dias mejor que una referencia simple. Una cinetica sin
+interruptor, en la que el propio lactato frena la produccion (la forma del
+grupo de Kontoravdi), describe el perfil igual de bien. Todo son
+asociaciones en datos normalizados, con las limitaciones que se detallan
+abajo.
 
 ---
 
@@ -370,119 +373,145 @@ fase de crecimiento, pero no el cultivo completo.
 
 ### Modelos mecanisticos del perfil de lactato
 
-Dos estructuras, comparadas sobre la misma ventana (hasta que la VCD cae por
-debajo del 85% de su maximo), con validacion agrupada por cultivo:
+Se comparan sobre la misma ventana (hasta que la VCD cae por debajo del 85%
+de su maximo), con validacion agrupada por cultivo:
 
 - **Modelo 1, sin interruptor.** El lactato se produce en proporcion al
   crecimiento, con un ajuste aditivo por pH y pCO2 del dia anterior, y se
   consume en proporcion al lactato y a las celulas:
   ΔL = α·ΔX⁺ + a_p·ΔX⁺·pH' + a_c·ΔX⁺·pCO2' + β·IVCD − k·L·IVCD.
-  Es la hipotesis nula: no hay un cambio de estado.
 - **Modelo 2, dos estados.** La misma cinetica, pero la produccion se apaga
   y el consumo se enciende segun F, la probabilidad acumulada de haber hecho
   el shift. F sale del modelo de riesgo diario ajustado solo con los
   cultivos de entrenamiento.
+- **Tipo Kotidis, sin interruptor** (seccion siguiente). El propio lactato
+  frena la produccion ligada al crecimiento.
 
-En los dos, el parametro de produccion α de cada cultivo se estima con sus
-dias 1-4 y se encoge hacia el valor de la poblacion (Bayes empirico).
+En todos, α es propia de cada cultivo: en entrenamiento se ajusta una α por
+cultivo, y en un cultivo nuevo se estima con sus dias 1-4 y se encoge hacia
+la media (Bayes empirico). Una version anterior usaba una sola α para todos
+los cultivos de entrenamiento; la auditoria de la tarea 7 mostro que asi los
+parametros compartidos absorben diferencias entre cultivos y todos los
+modelos quedaban en desventaja.
 
-**Los dos modelos usan la VCD medida en todo el horizonte**, asi que son
-reconstrucciones explicativas del perfil, no pronosticos. El "error a 2 dias"
-mide cuanto se aleja la reconstruccion dos dias despues de partir de un
-valor observado; para un pronostico real habria que pronosticar tambien el
-crecimiento.
+**Los modelos usan la VCD medida**, asi que el perfil completo es una
+reconstruccion explicativa, no un pronostico. El pronostico verdadero a 2
+dias se reporta aparte, con la VCD extrapolada.
 
 | Modelo | RMSE del perfil | RMSE a 2 dias |
 |---|---|---|
 | Perfil promedio (referencia) | 0.0636 | 0.0428 |
-| Modelo 1, sin interruptor | 0.0580 | 0.0414 |
-| Modelo 2, riesgo solo del dia (control) | 0.0567 | 0.0409 |
-| **Modelo 2, dos estados** | **0.0475** | **0.0345** |
-| Modelo 2 con el shift real (techo) | 0.0446 | 0.0329 |
+| Modelo 1, sin interruptor | 0.0520 | 0.0366 |
+| Modelo 2, riesgo solo del dia (control) | 0.0486 | 0.0358 |
+| **Modelo 2, dos estados** | **0.0452** | **0.0326** |
+| Modelo 2 con el shift real | 0.0426 | 0.0314 |
 
 ![Comparacion de modelos](docs/figuras/fig5_comparacion_modelos.png)
 
-- **El interruptor informado por las mediciones mejora el ajuste.** Modelo 2
-  menos modelo 1: −0.0105 en el perfil (IC 95% −0.0130 a −0.0083) y −0.0069
-  a 2 dias (IC −0.0082 a −0.0058). Cumple la regla de decision fijada antes
-  de correrlo.
-- **La estructura de dos estados por si sola no aporta.** Con un riesgo que
-  solo conoce el dia, el modelo 2 queda igual que el modelo 1: −0.0013 en el
-  perfil (IC −0.0045 a 0.0020). La ventaja viene de las mediciones que
-  alimentan el interruptor (sobre todo la VCD), no de tener dos estados. Lo
-  que los datos sostienen es "conocer cuando cambia el cultivo mejora la
-  cinetica", no "hace falta un interruptor regulado".
-- **No depende de mediciones futuras.** En el error a 2 dias, el segundo
-  paso usaba el riesgo del dia siguiente, calculado con mediciones de ese
-  dia. Congelando esas mediciones en el dia de partida, el modelo 2 pasa a
-  0.0362 y sigue mejor que el modelo 1 (−0.0052, IC −0.0063 a −0.0041).
-- **No depende de pH, pCO2 ni osmolalidad**, las variables que se mueven con
-  el lactato: sin ellas en el riesgo, el perfil queda en 0.0471.
-- Donde va el pH (en el interruptor o en la cinetica) no se puede decidir:
-  las dos variantes dan casi lo mismo (0.0348 y 0.0350 a 2 dias).
-- **En la serie completa**, incluido el declive y la re-produccion tardia, el
-  modelo 2 todavia le gana al perfil promedio, pero por poco: −0.0069 en el
-  perfil (IC −0.0123 a −0.0020) y −0.0020 a 2 dias (IC −0.0038 a −0.0001).
-  El modelo 1 no le gana.
+- **El interruptor informado por las mediciones mejora al modelo 1**:
+  −0.0068 en el perfil (IC 95% −0.0090 a −0.0047) y −0.0039 a 2 dias (IC
+  −0.0051 a −0.0029). Cumple la regla de decision fijada antes de correrlo.
+- **Con un riesgo que solo conoce el dia**, la mejora sobre el modelo 1 es
+  menor y no concluyente: −0.0034 (IC −0.0069 a 0.0003).
+- **El interruptor no usa mediciones posteriores al dia de partida**: con
+  las mediciones del dia siguiente congeladas, el error a 2 dias queda en
+  0.0340 y sigue mejor que el modelo 1 (−0.0026, IC −0.0037 a −0.0016). La
+  cinetica si usa la VCD observada; para eso esta el pronostico de abajo.
+- Sin pH, pCO2 ni osmolalidad en el riesgo, el perfil queda en 0.0442.
+- Donde va el pH (interruptor o cinetica) no se puede decidir: 0.0334 y
+  0.0326 a 2 dias.
+- **En la serie completa**, incluido el declive y la re-produccion tardia,
+  ninguna ventaja es clara en el perfil (modelo 2 −0.0067, IC −0.0146 a
+  0.0005); a 2 dias el modelo 2 si mejora un poco (−0.0029, IC −0.0050 a
+  −0.0009).
+
+**Pronostico verdadero a 2 dias.** Desde el dia 4 en adelante, sin conocer
+la VCD futura (se extrapola en linea recta con los dos ultimos dias) y con
+el interruptor congelado:
+
+| Metodo | RMSE a 2 dias |
+|---|---|
+| Lactato de hoy + incremento medio de entrenamiento | 0.0448 |
+| Modelo 1, VCD extrapolada | 0.0427 |
+| **Modelo 2, VCD extrapolada** | **0.0362** |
+| Modelo 2, VCD observada (referencia) | 0.0358 |
+
+El modelo 2 le gana a la referencia simple (−0.0086, IC −0.0119 a −0.0054)
+y casi no pierde nada por no conocer la VCD futura. El modelo 1 no le gana
+(−0.0021, IC −0.0055 a 0.0012). Esto es lo mas cercano al objetivo de
+anticipar 1-2 dias, y vale desde el dia 4.
 
 **El dia del shift.** Acertar a ±1 dia es un criterio flojo: 70 de los 95
 shifts dentro de la ventana caen en los dias 5 a 7, y predecir siempre el
-dia mediano ya acierta 74%. Por eso se reporta tambien el dia exacto, y un
-cultivo sin shift simulado cuenta como fallo:
+dia mediano ya acierta 74%. Un cultivo sin shift simulado cuenta como fallo:
 
 | Metodo | Dia exacto | A ±1 dia |
 |---|---|---|
 | Siempre el dia mediano de entrenamiento | 29% | 74% |
-| Modelo 1, sin interruptor | 34% | 73% |
-| Modelo 2, riesgo solo del dia (control) | 27% | 79% |
+| Modelo 1, sin interruptor | 44% | 83% |
+| Modelo 2, riesgo solo del dia (control) | 48% | 92% |
 | Riesgo diario solo (primer dia con F ≥ 0.5) | 59% | 94% |
-| Modelo 2, dos estados | 51% | 94% |
+| Modelo 2, dos estados | 59% | 93% |
 
-El modelo 2 no fecha el shift mejor que el riesgo diario por si solo: su dia
-simulado coincide con el del riesgo en 65% de los cultivos. El momento lo
+El modelo 2 fecha el shift igual que el riesgo diario por si solo; su dia
+simulado coincide con el del riesgo en 75% de los cultivos. El momento lo
 aporta el modelo de riesgo; la cinetica aporta la forma del perfil.
 
-**Forma del consumo y lectura de F (script 20).** Una revision de
-literatura sugirio dos cambios, que se probaron con reglas de decision
-fijadas antes de correrlos:
+**Forma del consumo (script 20).** Despues del shift, la tasa de consumo por
+celula sube solo debilmente con el lactato dentro de cada cultivo (Spearman
+mediana 0.26), y es parecida mientras el lactato esta por encima de un
+cuarto de su pico (mediana 0.048 a 0.062); se detiene cerca del final
+(−0.002). Se probo un consumo saturable con piso,
+q·(L − L*)⁺/(K + (L − L*)⁺)·IVCD, eligiendo K y el piso L* solo con los
+cultivos de entrenamiento (el primer orden compite en la misma rejilla):
 
-- **Consumo saturable por celula.** Despues del shift, la tasa de consumo por
-  celula es casi constante mientras el lactato esta por encima de un cuarto
-  de su pico (mediana 0.048 a 0.062) y cae a cero solo cerca del final
-  (−0.002). Eso no es primer orden. Cambiar k·L·IVCD por
-  q·L/(K + L)·IVCD, con K elegida solo con los cultivos de entrenamiento,
-  mejora el error despues del shift tanto con el shift real (−0.0036, IC
-  −0.0051 a −0.0021) como con F predicho (−0.0029, IC −0.0041 a −0.0017).
-  K salio intermedia (0.2 en 4 de 5 folds), no de orden cero. Se adopta,
-  con una reserva: supone que el 0 de los datos normalizados es lactato
-  casi cero. Si se fuerza un desplazamiento de 0.05 o 0.10, se elige el
-  primer orden en todos los folds y la ventaja desaparece. Los propios datos
-  prefieren desplazamiento 0 (con todos los cultivos, el ajuste empeora a
-  medida que crece: 0.979 del error del primer orden con 0, 1.045 con 0.10),
-  lo que cuadra con que el consumo se detiene cerca del 0 normalizado. Sin
-  las concentraciones reales no se puede confirmar.
-- **El shift como evento del cultivo.** Promediar trayectorias con cambio
-  brusco en cada dia posible, en lugar de mezclar tasas con F, no mejora
-  (+0.0003, IC 0.0001 a 0.0006). Leer F como fraccion de celulas que ya
-  cambiaron, como hace la mezcla de tasas, describe estos datos igual o
-  mejor. No se adopta.
-- Con el consumo saturable, el control con riesgo solo del dia sigue lejos
-  del modelo 2 (+0.0092 en el perfil, IC 0.0050 a 0.0138).
+- Gano en los 5 folds, con L* entre 0.03 y 0.04 y K entre 0.02 y 0.05
+  (unidades normalizadas; L* no es una concentracion: puede ser agotamiento
+  o un limite del analisis).
+- Con el shift real y reiniciando desde el lactato observado ese dia, mejora
+  el error despues del shift en −0.0071 (IC −0.0090 a −0.0052). Con F
+  predicho, −0.0044 (IC −0.0067 a −0.0018), y el perfil del modelo 2 baja de
+  0.0452 a 0.0422. **Se adopta.**
+- Con este consumo, el control con riesgo solo del dia ya no queda
+  claramente peor que el modelo 2 (+0.0026, IC −0.0017 a 0.0072).
+- Promediar trayectorias con cambio brusco en lugar de mezclar tasas con F
+  no cambia nada (+0.0007, IC 0.0004 a 0.0011), pero en esta clase de modelos
+  las dos formas dan casi lo mismo por construccion: la prueba no sirve para
+  decidir como interpretar F.
 
-**Un disparador interno: la forma de Kotidis et al. (2019) (script 21).**
-En la cinetica del grupo de Kontoravdi no hay un interruptor externo: el
-propio lactato frena la produccion ligada al crecimiento,
-(1 − L/Lacmax1), y por encima de Lacmax2 activa el consumo. En nuestro
-balance, el termino de consumo de esa forma es identico al del modelo 1;
-lo nuevo es un solo parametro, la inhibicion de la produccion por el
-lactato. Con los datos de entrenamiento ese parametro sale en 0 en los 5
-folds, y sin restriccion de signo sale negativo (−1.771): la produccion
-ligada al crecimiento no baja cuando sube el lactato, al menos entre
-cultivos. El modelo queda igual al modelo 1 (0.0580) y lejos del modelo 2.
-En estos datos, el lactato por si solo no fecha el shift. No contradice a
-Kotidis: ahi el termino de glucosa consumida tambien frena la produccion, y
-aqui no se puede usar porque la glucosa esta controlada y no hay datos de
-alimentacion.
+**Un disparador interno: la forma de Kotidis et al. (2019) (script 21).** En
+la cinetica del grupo de Kontoravdi no hay interruptor externo: el propio
+lactato frena la produccion ligada al crecimiento, (1 − L/Lacmax1), y por
+encima de Lacmax2 activa el consumo. En nuestro balance, el termino de
+consumo de esa forma es el del modelo 1; lo nuevo es un parametro, c, que
+mide cuanto frena el lactato la produccion ligada al crecimiento.
+
+- **Entre cultivos y dentro de cultivos dan signos opuestos.** Con una sola
+  α para todos, c sale negativo (−1.771): los cultivos que producen mas
+  lactato por celula tambien acumulan mas. Con α propia de cada cultivo,
+  c = 2.636: dentro de un cultivo, la produccion por celula nueva baja a
+  medida que sube el lactato. Una prueba sin modelo lo confirma: antes del
+  shift, el lactato producido por unidad de crecimiento baja con el lactato
+  (Spearman mediana −0.51, negativo en 80% de 76 cultivos). Una version
+  anterior de este analisis concluyo lo contrario por usar una sola α; la
+  auditoria de la tarea 7 lo detecto.
+- **Sin interruptor externo, la forma tipo Kotidis reconstruye el perfil
+  como el modelo 2**: 0.0440 contra 0.0452 (diferencia −0.0012, IC −0.0038
+  a 0.0015), y mejor que el modelo 1 (−0.0079, IC −0.0103 a −0.0058). Fecha
+  el shift algo peor (56% exacto, 86% a ±1 dia).
+- **No es solo el paso del tiempo**: si el freno se pone con el dia del
+  cultivo o con la IVCD acumulada en lugar del lactato, el perfil queda en
+  0.0493 y 0.0511.
+- **Las dos ideas se suman**: el modelo 2 con el freno por lactato llega a
+  0.0372 (−0.0080 contra el modelo 2, IC −0.0108 a −0.0054). Es exploratorio.
+
+**Cautela.** Lo de esta seccion es post hoc: el estimador por cultivo y las
+variantes se eligieron durante una auditoria, despues de ver los datos, asi
+que los intervalos son optimistas. Es una asociacion: el lactato puede estar
+representando otras cosas que se acumulan con el, como la base anadida y la
+osmolalidad o el amonio. No contradice a Kotidis ni lo confirma: su termino
+de glucosa consumida no se puede usar aqui porque la glucosa esta controlada
+y no hay datos de alimentacion. Hay que confirmarlo con otros datos.
 
 **Trabajos cercanos.** La idea de que las covariables mejoran el momento de
 un cambio de fase frente al tiempo solo ya esta publicada: Wang, Harcum y
@@ -490,17 +519,21 @@ Xie (2026, Biotechnol Bioeng, doi:10.1002/bit.70205) y COSMIC-dFBA
 (Gopalakrishnan et al. 2024, Metab Eng, doi:10.1016/j.ymben.2024.02.012).
 Lo de este trabajo es mas acotado: un conjunto industrial de 100 cultivos con
 validacion agrupada, un control explicito de estructura y la formulacion como
-riesgo diario. Y "la estructura sola no aporta" vale para una estructura sin
-variable que dispare el cambio; los modelos con regulacion interna (redox,
-senalizacion) si pueden fecharlo, pero necesitan mediciones que aqui no hay.
+riesgo diario. Ademas, una forma con disparador interno (el freno por
+lactato de Kotidis) reconstruye el perfil tan bien como el interruptor
+externo, lo que conecta este resultado con la cinetica de ese grupo.
 
-**Revision independiente.** Estos resultados ya incorporan una auditoria
-independiente de los scripts 15 a 18. Encontro dos errores en la estimacion
-de α, uno que dejaba en desventaja al modelo 1 y otro al modelo 2; el
-segundo paso del error a 2 dias usando mediciones futuras; el criterio de
-±1 dia demasiado flojo; los ceros de pCO2 y pO2, y la regla de
-re-produccion relativa a un minimo casi nulo. Todo esta corregido arriba.
-No encontro fuga de la etiqueta.
+**Revision independiente.** Estos resultados incorporan dos auditorias
+independientes (scripts 15 a 21). La primera encontro dos errores en la
+estimacion de α, el segundo paso del error a 2 dias usando mediciones
+futuras, el criterio de ±1 dia demasiado flojo, los ceros de pCO2 y pO2 y la
+regla de re-produccion relativa a un minimo casi nulo. La segunda encontro
+que ajustar una sola α para todos los cultivos invertia el signo del freno
+por lactato y perjudicaba a todos los modelos, que el argumento de "los
+datos prefieren desplazamiento 0" era circular (ahora el piso del consumo se
+elige en entrenamiento) y que la prueba de mezcla de trayectorias no podia
+discriminar. Todo esta corregido arriba. Ninguna encontro fuga de la
+etiqueta.
 
 ## Limitaciones
 
@@ -516,15 +549,17 @@ No encontro fuga de la etiqueta.
   sobreajuste; por eso las comparaciones se hacen contra rivales fuertes, con
   intervalos por bootstrap de cultivos y reglas de decision fijadas antes.
 - **El modelo de riesgo falla en los shifts tardios** (dia 7 en adelante).
-- **Los modelos mecanisticos son explicativos**: usan la VCD medida. En los
-  cultivos tipicos subestiman la velocidad con la que cae el lactato despues
-  del shift.
+- **Los modelos mecanisticos son explicativos**: usan la VCD medida. El
+  pronostico verdadero a 2 dias (VCD extrapolada) solo se evaluo desde el
+  dia 4.
+- **El freno por lactato (script 21) es post hoc** y es una asociacion: el
+  lactato puede representar otras cosas que se acumulan con el.
 - **Sin regimen de alimentacion ni dilucion.** La tasa especifica la ignora;
   es robusta hasta una dilucion de alrededor de 3% diario.
 - **Sin marcadores redox** (NAD+/NADH, piruvato): las asociaciones no
   identifican el mecanismo.
 - **El fenomeno esta muy estudiado** y su mecanismo sigue en debate (ver,
-  entre otros, Schmitt et al. 2019). Esto no es el primer trabajo que modela
+  entre otros, Schmitt et al. 2019, doi:10.1002/bit.27015). Esto no es el primer trabajo que modela
   o anticipa el shift en CHO; lo que aporta es una definicion por celula, una
   comparacion honesta entre estructuras mecanisticas y la documentacion de lo
   que no funciono.

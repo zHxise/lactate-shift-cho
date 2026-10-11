@@ -227,7 +227,7 @@ def fig_modelos():
                ("M1 sin interruptor (script 17)", "modelo 1 (sin interruptor)", GRIS),
                ("M2 control: riesgo solo con el dia", "modelo 2, riesgo solo del día (control)", "#a9a8a2"),
                ("M2 dos estados (F predicho)", "modelo 2 (interruptor predicho)", AZUL),
-               ("M2 oraculo (F observado; techo)", "techo (interruptor perfecto)", "#86b6ef")]
+               ("M2 con el shift real", "modelo 2 con el shift real", "#86b6ef")]
     t = pd.read_csv(TABLAS / "modelo2_tiempo.csv").set_index("metodo")
     filas_b = [("dia mediano de entrenamiento (constante)", "siempre el día mediano", GRIS),
                ("M1 sin interruptor", "modelo 1", GRIS),

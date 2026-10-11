@@ -29,10 +29,20 @@ por cultivo que los scripts 17 y 18. Tambien se repite el control de
 estructura (riesgo solo con el dia) con el consumo nuevo, para ver si la
 conclusion "la estructura sola no aporta" cambia.
 
-SENSIBILIDAD (sugerida por la revision): con un desplazamiento c > 0 en la
-forma saturable (el 0 de los datos min-max no seria lactato cero), la
-conclusion podria cambiar. Se prueba forzando c = 0.05 y 0.10, y se mira que
-c prefieren los datos.
+PISO DEL CONSUMO (correccion de la auditoria de la tarea 7): con datos
+min-max el 0 es el minimo del dataset, no necesariamente lactato cero. La
+forma saturable usa (L - L*)+ / (K + (L - L*)+), donde L* es el nivel de
+lactato normalizado al que se detiene el consumo. (K, L*) se eligen juntos en
+cada fold solo con los cultivos de entrenamiento. Una version anterior
+probaba solo L* <= 0 y concluia que "los datos prefieren L* = 0"; eso era
+circular y quedo descartado. L* NO se interpreta como concentracion.
+
+Todos los ajustes usan alfa propia por cultivo de entrenamiento (efectos
+fijos; ver m1.ajustar_ef).
+
+Metrica adicional (sugerida por la auditoria): REINICIO en el shift. Con el
+shift real, se simula desde el lactato observado el dia del shift en
+adelante; asi solo cuenta la forma del consumo, no lo que paso antes.
 
 REGLAS DE DECISION (fijadas antes de correr):
   A se adopta si, con interruptor perfecto Y con F predicho, el RMSE de los
@@ -67,21 +77,20 @@ m2 = import_module("18_modelo2_dos_estados")
 
 # K en unidades de lactato normalizado (los picos suelen estar entre 0.1 y 0.4).
 # np.inf = primer orden (la forma actual).
-REJILLA_K = [0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, np.inf]
+REJILLA_K = [0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0]
+# piso L* (en lactato normalizado): positivo = el consumo para por encima del 0 de los datos
+REJILLA_PISO = [-0.05, -0.02, 0.0, 0.01, 0.02, 0.03, 0.04, 0.05, 0.07]
+LINEAL = (np.inf, 0.0)  # primer orden
 
 
-# Desplazamiento del lactato en la forma saturable. Los datos son min-max: el
-# lactato real es a + b*L con "a" desconocido, asi que el L = 0 de los datos no
-# es necesariamente lactato cero. C_OFF = 0 en el analisis principal; la
-# sensibilidad (al final de main) lo cambia a 0.05 y 0.10 para ver si la
-# conclusion depende de ese supuesto.
-C_OFF = 0.0
-
-
-def g(L, K):
-    """Dependencia del consumo con el lactato. K = inf -> L (primer orden)."""
+def g(L, forma):
+    """Dependencia del consumo con el lactato. forma = (K, piso). K = inf -> primer orden."""
+    K, piso = forma
     L = np.maximum(L, 0.0)
-    return L if np.isinf(K) else (L + C_OFF) / (K + L + C_OFF)
+    if np.isinf(K):
+        return L
+    Lp = np.maximum(L - piso, 0.0)
+    return Lp / (K + Lp)
 
 
 # ---------------------------------------------------------------- modelo 2 con g(L)
@@ -97,19 +106,18 @@ def matriz(s, F, mu, sd, K):
     return A, np.diff(L)
 
 
-def ajustar(S, cultivos, et, mu, sd, K):
-    bl = [matriz(S[c], m2.f_obs(S[c], et.loc[c]), mu, sd, K) for c in cultivos]
-    A = np.vstack([b[0] for b in bl]); y = np.concatenate([b[1] for b in bl])
-    ok = np.isfinite(A).all(axis=1) & np.isfinite(y)
-    r = lsq_linear(A[ok], y[ok], bounds=([0, 0, 0, -np.inf, -np.inf], [np.inf] * 5))
-    return r.x, float(np.mean((A[ok] @ r.x - y[ok]) ** 2))
+def ajustar(S, cultivos, et, mu, sd, forma):
+    bl = [matriz(S[c], m2.f_obs(S[c], et.loc[c]), mu, sd, forma) for c in cultivos]
+    return m1.ajustar_ef(bl, [0, 0, -np.inf, -np.inf])
 
 
-def elegir_K(S, tr, et, mu, sd):
-    """K con menor error de ajuste en ENTRENAMIENTO (nunca mira los cultivos de prueba)."""
-    errores = {K: ajustar(S, tr, et, mu, sd, K)[1] for K in REJILLA_K}
-    K = min(errores, key=errores.get)
-    return K, ajustar(S, tr, et, mu, sd, K)[0]
+def elegir_forma(S, tr, et, mu, sd):
+    """(K, piso) con menor error de ajuste en ENTRENAMIENTO (nunca mira los cultivos de prueba).
+    El primer orden compite en la misma rejilla: si gana, se usa."""
+    candidatos = [LINEAL] + [(K, pz) for K in REJILLA_K for pz in REJILLA_PISO]
+    errores = {f: ajustar(S, tr, et, mu, sd, f)[1] for f in candidatos}
+    f = min(errores, key=errores.get)
+    return f, ajustar(S, tr, et, mu, sd, f)[0]
 
 
 def lam_pooling(S, cultivos, et, p, mu, sd, K):
@@ -135,12 +143,12 @@ def alfa(s, F, p, mu, sd, lam, K, hasta=4):
     return max((x @ (y - base) + lam * p[0]) / (x @ x + lam), 0.0)
 
 
-def simular(s, F, p, a, mu, sd, K):
+def simular(s, F, p, a, mu, sd, K, i0=0):
     A, _ = matriz(s, F, mu, sd, K)
     L, X = s["L"].to_numpy(), s["X"].to_numpy()
     sim = np.full(len(L), np.nan)
-    sim[0] = L[0]
-    for t in range(len(L) - 1):
+    sim[i0] = L[i0]
+    for t in range(i0, len(L) - 1):
         ivcd = (X[t] + X[t + 1]) / 2
         prod = (1 - F[t]) * (a * max(X[t + 1] - X[t], 0) + p[1] * ivcd) + p[3] * A[t, 3] + p[4] * A[t, 4]
         sim[t + 1] = max(sim[t] + prod - F[t] * p[2] * g(np.array([sim[t]]), K)[0] * ivcd, 0.0)
@@ -182,10 +190,10 @@ def correr(S, pp, pp_ciego, et, cols, etiqueta):
         mu = (todo["ph_prev"].mean(), todo["pco2_prev"].mean())
         sd = (todo["ph_prev"].std(), todo["pco2_prev"].std())
         Fp = m2.riesgo_predicho(pp_ciego, pp[pp["cult"].isin(tr)], cols, te)
-        K_sat, p_sat = elegir_K(S, tr, et, mu, sd)
+        K_sat, p_sat = elegir_forma(S, tr, et, mu, sd)
         ks.append(K_sat)
-        p_lin, _ = ajustar(S, tr, et, mu, sd, np.inf)
-        modelos = {"lineal": (np.inf, p_lin), "saturable": (K_sat, p_sat)}
+        p_lin, _ = ajustar(S, tr, et, mu, sd, LINEAL)
+        modelos = {"lineal": (LINEAL, p_lin), "saturable": (K_sat, p_sat)}
         lams = {k: lam_pooling(S, tr, et, pk, mu, sd, Kk) for k, (Kk, pk) in modelos.items()}
         for c in te:
             s = S[c]
@@ -201,6 +209,12 @@ def correr(S, pp, pp_ciego, et, cols, etiqueta):
                     res[f"{nombre}_{fn}_rmse"] = rmse(sim - obs)
                     res[f"{nombre}_{fn}_post"] = rmse((sim - obs)[post]) if post.any() else np.nan
                     res[f"{nombre}_{fn}_shift"] = m1.dia_shift_sim(s, sim)
+                    if fn == "techo" and post.any():
+                        # reinicio: desde el lactato observado el dia del shift
+                        i_s = int(np.flatnonzero(s.index.to_numpy() == ds)[0])
+                        a_ = alfa(s, F, p, mu, sd, lams[nombre], K)
+                        sr = simular(s, F, p, a_, mu, sd, K, i0=i_s)
+                        res[f"{nombre}_reinicio_post"] = rmse((sr - obs)[post])
                 mez, tau = mezcla_trayectorias(s, F_pred, p, mu, sd, lams[nombre], K)
                 res[f"{nombre}_mezcla_rmse"] = rmse(mez - obs)
                 res[f"{nombre}_mezcla_post"] = rmse((mez - obs)[post]) if post.any() else np.nan
@@ -268,6 +282,8 @@ def main() -> None:
         d, ic = m1.ic_pareado(t[a], t[b])
         filas.append({"comparacion": nombre, "metrica": metrica, "modelo": t[a].mean(), "referencia": t[b].mean(),
                       "dif": d, "ic_bajo": ic[0], "ic_alto": ic[1]})
+    comparar("A saturable vs lineal (reinicio en el shift real)", "M2_saturable_reinicio_post",
+             "M2_lineal_reinicio_post", "RMSE despues del shift")
     for fn, txt in (("techo", "interruptor perfecto"), ("pred", "F predicho")):
         comparar(f"A saturable vs lineal ({txt})", f"M2_saturable_{fn}_post", f"M2_lineal_{fn}_post", "RMSE despues del shift")
         comparar(f"A saturable vs lineal ({txt})", f"M2_saturable_{fn}_rmse", f"M2_lineal_{fn}_rmse", "RMSE del perfil")
@@ -289,39 +305,12 @@ def main() -> None:
     ])
     tiempo.round(4).to_csv(TABLAS / "modelo2_consumo_mezcla_tiempo.csv", index=False)
     print("\n" + tiempo.round(3).to_string(index=False))
-    print(f"\nK en el extremo superior (primer orden) en {sum(np.isinf(k) for k in ks)} de {len(ks)} folds")
+    print(f"\nPrimer orden elegido en {sum(np.isinf(f[0]) for f in ks)} de {len(ks)} folds")
 
-    # ------------------------------------------------ sensibilidad al desplazamiento
-    global C_OFF
-    sens = []
-    for c_off in (0.05, 0.10):
-        C_OFF = c_off
-        ts, ks_s = correr(S, pp, pp_ciego, et, m3, "M2")
-        for fn in ("techo", "pred"):
-            d, ic = m1.ic_pareado(ts[f"M2_saturable_{fn}_post"], ts[f"M2_lineal_{fn}_post"])
-            sens.append({"desplazamiento": c_off, "interruptor": fn, "dif_post": d, "ic_bajo": ic[0],
-                         "ic_alto": ic[1], "K_por_fold": " ".join(str(k) for k in ks_s)})
-    # que desplazamiento prefieren los datos: ajuste con todos los cultivos (descriptivo,
-    # no es validacion) para cada desplazamiento, con la mejor K, relativo al primer orden
-    todo = pd.concat([S[c] for c in S])
-    mu = (todo["ph_prev"].mean(), todo["pco2_prev"].mean())
-    sd = (todo["ph_prev"].std(), todo["pco2_prev"].std())
-    C_OFF = 0.0
-    mse_lineal = ajustar(S, sorted(S), et, mu, sd, np.inf)[1]
-    pref = []
-    for c_off in (0.0, 0.01, 0.02, 0.05, 0.10):
-        C_OFF = c_off
-        mejor = min(((K, ajustar(S, sorted(S), et, mu, sd, K)[1]) for K in REJILLA_K[:-1]), key=lambda r: r[1])
-        pref.append({"desplazamiento": c_off, "mejor_K": mejor[0], "mse_relativo_a_primer_orden": mejor[1] / mse_lineal})
-    pref = pd.DataFrame(pref)
-    pref.round(4).to_csv(TABLAS / "modelo2_consumo_desplazamiento.csv", index=False)
-    print("\nAjuste con todos los cultivos segun el desplazamiento (< 1 = mejor que primer orden):")
-    print(pref.round(4).to_string(index=False))
-    C_OFF = 0.0
-    sens = pd.DataFrame(sens)
-    sens.round(4).to_csv(TABLAS / "modelo2_consumo_sensibilidad.csv", index=False)
-    print("\nSensibilidad al desplazamiento de la normalizacion (saturable - lineal, despues del shift):")
-    print(sens.round(4).to_string(index=False))
+    formas = pd.DataFrame([{"fold": i + 1, "K": f[0], "piso": f[1]} for i, f in enumerate(ks)])
+    formas.to_csv(TABLAS / "modelo2_consumo_formas.csv", index=False)
+    print("\nForma elegida por fold (entrenamiento):")
+    print(formas.to_string(index=False))
 
 
 if __name__ == "__main__":
