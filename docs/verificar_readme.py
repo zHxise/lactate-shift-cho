@@ -451,7 +451,7 @@ def cifras_v2() -> list[tuple[str, str]]:
                                          f"{max(cv['25-50%'], cv['50-75%'], cv['75-100%']):.3f})"))
     c.append(("v20: consumo bajo", f"({neg3(cv['0-25%'])})"))
     fo = leer("modelo2_consumo_formas.csv")
-    c.append(("v20: formas", f"Gano en los {int((~np.isinf(fo['K'])).sum())} folds, con L* entre {fo['piso'].min():.2f} "
+    c.append(("v20: formas", f"Fue elegida sobre el primer orden en el ajuste de entrenamiento de los {int((~np.isinf(fo['K'])).sum())} folds, con L* entre {fo['piso'].min():.2f} "
                              f"y {fo['piso'].max():.2f} y K entre {fo['K'].min():.2f} y {fo['K'].max():.2f}"))
     cm = leer("modelo2_consumo_mezcla.csv")
     def f20(comp, met):

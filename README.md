@@ -413,7 +413,9 @@ dias se reporta aparte, con la VCD extrapolada.
   −0.0051 a −0.0029). Cumple la regla de decision fijada antes de correrlo.
 - **Con un riesgo que solo conoce el dia**, la mejora sobre el modelo 1 es
   menor y no concluyente: −0.0034 (IC −0.0069 a 0.0003).
-- **El interruptor no usa mediciones posteriores al dia de partida**: con
+- **El interruptor no usa mediciones posteriores al dia de partida** (salvo
+  la receta de temperatura programada del dia siguiente, valido solo si el
+  dia del cambio de temperatura estaba fijado de antemano): con
   las mediciones del dia siguiente congeladas, el error a 2 dias queda en
   0.0340 y sigue mejor que el modelo 1 (−0.0026, IC −0.0037 a −0.0016). La
   cinetica si usa la VCD observada; para eso esta el pronostico de abajo.
@@ -465,13 +467,16 @@ cuarto de su pico (mediana 0.048 a 0.062); se detiene cerca del final
 q·(L − L*)⁺/(K + (L − L*)⁺)·IVCD, eligiendo K y el piso L* solo con los
 cultivos de entrenamiento (el primer orden compite en la misma rejilla):
 
-- Gano en los 5 folds, con L* entre 0.03 y 0.04 y K entre 0.02 y 0.05
+- Fue elegida sobre el primer orden en el ajuste de entrenamiento de los 5
+  folds, con L* entre 0.03 y 0.04 y K entre 0.02 y 0.05
   (unidades normalizadas; L* no es una concentracion: puede ser agotamiento
   o un limite del analisis).
 - Con el shift real y reiniciando desde el lactato observado ese dia, mejora
   el error despues del shift en −0.0071 (IC −0.0090 a −0.0052). Con F
   predicho, −0.0044 (IC −0.0067 a −0.0018), y el perfil del modelo 2 baja de
-  0.0452 a 0.0422. **Se adopta.**
+  0.0452 a 0.0422. **Se adopta como variante exploratoria** (post hoc: el
+  piso y la estimacion por cultivo se eligieron durante la auditoria de la
+  tarea 7).
 - Con este consumo, el control con riesgo solo del dia ya no queda
   claramente peor que el modelo 2 (+0.0026, IC −0.0017 a 0.0072).
 - Promediar trayectorias con cambio brusco en lugar de mezclar tasas con F
@@ -479,7 +484,8 @@ cultivos de entrenamiento (el primer orden compite en la misma rejilla):
   las dos formas dan casi lo mismo por construccion: la prueba no sirve para
   decidir como interpretar F.
 
-**Un disparador interno: la forma de Kotidis et al. (2019) (script 21).** En
+**Un disparador interno: la forma de Kotidis et al. (2019,
+doi:10.1002/bit.26960) (script 21).** En
 la cinetica del grupo de Kontoravdi no hay interruptor externo: el propio
 lactato frena la produccion ligada al crecimiento, (1 − L/Lacmax1), y por
 encima de Lacmax2 activa el consumo. En nuestro balance, el termino de
@@ -490,13 +496,15 @@ mide cuanto frena el lactato la produccion ligada al crecimiento.
   α para todos, c sale negativo (−1.771): los cultivos que producen mas
   lactato por celula tambien acumulan mas. Con α propia de cada cultivo,
   c = 2.636: dentro de un cultivo, la produccion por celula nueva baja a
-  medida que sube el lactato. Una prueba sin modelo lo confirma: antes del
+  medida que sube el lactato. Una prueba sin modelo es compatible con eso,
+aunque tiene sesgo negativo por el ruido de medicion del lactato: antes del
   shift, el lactato producido por unidad de crecimiento baja con el lactato
   (Spearman mediana −0.51, negativo en 80% de 76 cultivos). Una version
   anterior de este analisis concluyo lo contrario por usar una sola α; la
   auditoria de la tarea 7 lo detecto.
-- **Sin interruptor externo, la forma tipo Kotidis reconstruye el perfil
-  como el modelo 2**: 0.0440 contra 0.0452 (diferencia −0.0012, IC −0.0038
+- **Sin interruptor externo, la forma tipo Kotidis no se distingue del
+  modelo 2 en el perfil** (las dos con consumo de primer orden): 0.0440
+  contra 0.0452 (diferencia −0.0012, IC −0.0038
   a 0.0015), y mejor que el modelo 1 (−0.0079, IC −0.0103 a −0.0058). Fecha
   el shift algo peor (56% exacto, 86% a ±1 dia).
 - **No es solo el paso del tiempo**: si el freno se pone con el dia del
@@ -520,8 +528,9 @@ Xie (2026, Biotechnol Bioeng, doi:10.1002/bit.70205) y COSMIC-dFBA
 Lo de este trabajo es mas acotado: un conjunto industrial de 100 cultivos con
 validacion agrupada, un control explicito de estructura y la formulacion como
 riesgo diario. Ademas, una forma con disparador interno (el freno por
-lactato de Kotidis) reconstruye el perfil tan bien como el interruptor
-externo, lo que conecta este resultado con la cinetica de ese grupo.
+lactato de Kotidis et al. 2019, doi:10.1002/bit.26960) no se distingue del
+interruptor externo en el perfil (post hoc; con consumo de primer orden en
+ambos), aunque fecha el shift algo peor.
 
 **Revision independiente.** Estos resultados incorporan dos auditorias
 independientes (scripts 15 a 21). La primera encontro dos errores en la
@@ -552,8 +561,10 @@ etiqueta.
 - **Los modelos mecanisticos son explicativos**: usan la VCD medida. El
   pronostico verdadero a 2 dias (VCD extrapolada) solo se evaluo desde el
   dia 4.
-- **El freno por lactato (script 21) es post hoc** y es una asociacion: el
-  lactato puede representar otras cosas que se acumulan con el.
+- **El freno por lactato (script 21) y el consumo con piso (script 20) son
+  post hoc**: se eligieron durante una auditoria, despues de ver los datos.
+  El freno es una asociacion: el lactato puede representar otras cosas que
+  se acumulan con el, y el ruido de medicion puede inflar su tamano.
 - **Sin regimen de alimentacion ni dilucion.** La tasa especifica la ignora;
   es robusta hasta una dilucion de alrededor de 3% diario.
 - **Sin marcadores redox** (NAD+/NADH, piruvato): las asociaciones no

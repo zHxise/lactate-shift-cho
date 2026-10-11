@@ -10,3 +10,4 @@ openpyxl==3.1.5
 matplotlib==3.10.9
 # Scripts 04-05 (Cox y SHAP) usan ademas lifelines y shap; no se fijaron porque
 # esas cifras no forman parte del analisis actual.
+pytest>=7.0  # para python -m pytest y el conteo de tests del verificador
