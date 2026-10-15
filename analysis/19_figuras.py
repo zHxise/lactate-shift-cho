@@ -18,10 +18,15 @@ Los ejemplos se eligen de forma determinista (primer cultivo, en orden, con
 shift en los dias 4, 5, 6, 7 y 8, mas uno sin shift), no por que se vean bien.
 
 Ejecutar:  python analysis/19_figuras.py
+           FIG_IDIOMA=en python analysis/19_figuras.py   (copias en ingles, *_en.png)
+
+La version en ingles no repite ningun calculo distinto: se dibujan las mismas
+figuras y, justo antes de guardar, se traducen los textos con el diccionario EN.
 
 Desarrollado por Arturo Rodriguez.
 """
 
+import os
 import warnings
 from importlib import import_module
 
@@ -45,6 +50,103 @@ GRIS, TINTA, TINTA2 = "#8a8986", "#0b0b0b", "#52514e"
 plt.rcParams.update({"font.size": 9, "axes.edgecolor": "#c8c7c2", "axes.labelcolor": TINTA2,
                      "xtick.color": TINTA2, "ytick.color": TINTA2, "axes.spines.top": False,
                      "axes.spines.right": False, "figure.dpi": 150, "savefig.bbox": "tight"})
+
+IDIOMA = os.environ.get("FIG_IDIOMA", "es")
+
+# Traduccion por fragmentos, en orden: primero los textos largos y especificos,
+# al final las palabras sueltas ("día"), para que no se rompan los textos largos.
+EN = [
+    ("Puntos grises: días fuera de la ventana modelada (después del declive de la VCD). "
+     "Simulaciones fuera de fold; VCD medida.",
+     "Grey points: days outside the modelled window (after the VCD decline). "
+     "Out-of-fold simulations; measured VCD."),
+    ("Fracción en estado de consumo predicha por el modelo de riesgo diario "
+     "(línea punteada naranja: shift real)",
+     "Predicted fraction in the consumption state from the daily hazard model "
+     "(dotted orange line: labelled shift)"),
+    ("F predicha\n(prob. de que el shift ya ocurrió)", "predicted F\n(prob. that the shift has occurred)"),
+    ("Asociación con el shift en el modelo de riesgo diario (IC 95%, bootstrap por cultivo)",
+     "Association with the shift in the daily hazard model (95% CI, culture bootstrap)"),
+    ("razón de momios por IQR (escala log) · < 1 retrasa el shift, > 1 lo adelanta",
+     "odds ratio per IQR (log scale) · < 1 delays the shift, > 1 brings it forward"),
+    ("Fuera de fold, con la VCD medida (reconstrucción explicativa, no pronóstico). "
+     "Un cultivo sin shift simulado cuenta como fallo.",
+     "Out of fold, with measured VCD (explanatory reconstruction, not a forecast). "
+     "A culture with no simulated shift counts as a miss."),
+    ("error del perfil de lactato (RMSE, menor es mejor)", "lactate profile error (RMSE, lower is better)"),
+    ("cultivos con el shift acertado (%, n = ", "cultures with the shift day correct (%, n = "),
+    ("Coincidencia con el cambio de temperatura vs azar", "Coincidence with the temperature shift vs chance"),
+    (" cultivos con shift a ±1 día del cambio de temperatura",
+     " cultures with the shift within ±1 day of the temperature shift"),
+    ("fracción de los ", "fraction of the "),
+    ("VCD del día 3 y día del shift (todos: n=", "Day-3 VCD and shift day (all: n="),
+    ("VCD día 3 (normalizada)", "VCD on day 3 (normalised)"),
+    ("día del shift (jitter ±0.12)", "shift day (jitter ±0.12)"),
+    ("sin cambio de T", "no T shift"),
+    ("con cambio de T", "with T shift"),
+    ("permutaciones", "permutations"),
+    ("modelo 2, riesgo solo del día (control)", "model 2, day-only hazard (control)"),
+    ("modelo 2, riesgo solo del día", "model 2, day-only hazard"),
+    ("modelo 2 (interruptor predicho)", "model 2 (predicted switch)"),
+    ("modelo 2 con el shift real", "model 2 with the labelled shift"),
+    ("modelo 1 (sin interruptor)", "model 1 (no switch)"),
+    ("modelo 2 (dos estados)", "model 2 (two states)"),
+    ("riesgo diario solo (F ≥ 0.5)", "daily hazard alone (F ≥ 0.5)"),
+    ("siempre el día mediano", "always the median day"),
+    ("perfil promedio", "mean profile"),
+    ("shift real (etiqueta)", "labelled shift"),
+    ("shift real día", "labelled shift day"),
+    ("sin shift", "no shift"),
+    ("lactato (normalizado)", "lactate (normalised)"),
+    ("todos los cultivos", "all cultures"),
+    ("grupo de volumen", "volume group"),
+    ("día exacto", "exact day"),
+    ("a ±1 día", "within ±1 day"),
+    ("observado", "observed"),
+    ("azar", "chance"),
+    ("modelo 2", "model 2"),
+    ("modelo 1", "model 1"),
+    ("amonio", "ammonium"),
+    ("glutamina", "glutamine"),
+    ("temperatura", "temperature"),
+    ("día", "day"),
+]
+
+
+def traducir(texto):
+    # Las palabras sueltas se cambian solo como palabra completa: si no, "azar"
+    # tambien cambiaba dentro de "hazard", que ya estaba traducido.
+    import re
+    for es, en in EN:
+        if " " in es or not es.isalpha():
+            texto = texto.replace(es, en)
+        else:
+            texto = re.sub(rf"\b{es}\b", en, texto)
+    return texto
+
+
+def guardar(fig, nombre):
+    """Guarda la figura; con FIG_IDIOMA=en traduce sus textos y agrega _en al nombre.
+
+    Las etiquetas fijas de los ejes (set_yticklabels) se regeneran al dibujar desde
+    su formateador (FixedFormatter, o FuncFormatter en matplotlib 3.10), asi que se
+    vuelven a fijar ya traducidas; los ejes numericos no se tocan.
+    """
+    if IDIOMA == "en":
+        from matplotlib.text import Text
+        from matplotlib.ticker import FixedFormatter, FuncFormatter
+        fig.canvas.draw()
+        for ax in fig.axes:
+            for eje in (ax.xaxis, ax.yaxis):
+                if isinstance(eje.get_major_formatter(), (FixedFormatter, FuncFormatter)):
+                    locs = eje.get_ticklocs()
+                    textos = [traducir(t.get_text()) for t in eje.get_ticklabels()]
+                    eje.set_ticks(locs, labels=textos)
+        for t in fig.findobj(Text):
+            t.set_text(traducir(t.get_text()))
+        nombre = nombre.replace(".png", "_en.png")
+    fig.savefig(FIGURAS / nombre)
+
 
 
 def ejemplos(et, S):
@@ -123,7 +225,7 @@ def fig_perfiles(sims, raw, et, orden):
     fig.text(0.5, -0.03, "Puntos grises: días fuera de la ventana modelada (después del declive de la VCD). "
              "Simulaciones fuera de fold; VCD medida.", ha="center", color=TINTA2, fontsize=8)
     fig.tight_layout()
-    fig.savefig(FIGURAS / "fig1_perfiles_modelos.png")
+    guardar(fig, "fig1_perfiles_modelos.png")
     plt.close(fig)
 
 
@@ -145,7 +247,7 @@ def fig_riesgo(sims, et, orden):
     fig.suptitle("Fracción en estado de consumo predicha por el modelo de riesgo diario "
                  "(línea punteada naranja: shift real)", fontsize=10, color=TINTA, x=0.01, ha="left")
     fig.tight_layout()
-    fig.savefig(FIGURAS / "fig2_riesgo_diario.png")
+    guardar(fig, "fig2_riesgo_diario.png")
     plt.close(fig)
 
 
@@ -172,7 +274,7 @@ def fig_asociaciones():
             ax.errorbar(r["or_por_iqr"], y0 - 0.1 - 0.15 * k,
                         xerr=[[r["or_por_iqr"] - r["ic_bajo"]], [r["ic_alto"] - r["or_por_iqr"]]],
                         fmt=marcas[g], color=colores[g], ms=5, lw=1.5, capsize=0,
-                        label=f"grupo {float(g):.5f}" if i == 0 else None)
+                        label=f"grupo de volumen {k + 1}" if i == 0 else None)
     ax.axvline(1, color=GRIS, lw=1)
     ax.set_xscale("log")
     ax.set_yticks([len(variables) - i for i in range(len(variables))])
@@ -182,7 +284,7 @@ def fig_asociaciones():
     ax.set_title("Asociación con el shift en el modelo de riesgo diario (IC 95%, bootstrap por cultivo)",
                  fontsize=10, loc="left", color=TINTA)
     fig.tight_layout()
-    fig.savefig(FIGURAS / "fig3_asociaciones.png")
+    guardar(fig, "fig3_asociaciones.png")
     plt.close(fig)
 
 
@@ -216,7 +318,7 @@ def fig_temperatura(raw, et):
     b.set_title(f"VCD del día 3 y día del shift (todos: n={len(dv)}, R² {r2(dv):.2f})", fontsize=10, loc="left",
                 color=TINTA)
     fig.tight_layout()
-    fig.savefig(FIGURAS / "fig4_temperatura.png")
+    guardar(fig, "fig4_temperatura.png")
     plt.close(fig)
 
 
@@ -257,7 +359,7 @@ def fig_modelos():
     b.legend(frameon=False, fontsize=8, loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=2)
     fig.text(0.5, -0.04, "Fuera de fold, con la VCD medida (reconstrucción explicativa, no pronóstico). "
              "Un cultivo sin shift simulado cuenta como fallo.", ha="center", color=TINTA2, fontsize=8)
-    fig.savefig(FIGURAS / "fig5_comparacion_modelos.png")
+    guardar(fig, "fig5_comparacion_modelos.png")
     plt.close(fig)
 
 
@@ -276,6 +378,9 @@ def main() -> None:
     fig_modelos()
     # outputs/ no se sube a git; el README muestra dos figuras de resumen (sin series
     # de cultivos individuales), asi que se copian a docs/figuras/, que si se versiona
+    if IDIOMA == "en":
+        print("figuras en ingles en", FIGURAS)
+        return
     import shutil
     destino = FIGURAS.parents[1] / "docs" / "figuras"
     destino.mkdir(parents=True, exist_ok=True)
